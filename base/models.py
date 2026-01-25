@@ -12,6 +12,7 @@ import django
 from django.apps import apps
 from django.contrib import messages
 from django.contrib.auth.models import AbstractUser, User
+from django.core import signing
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.translation import gettext_lazy as _
@@ -1696,6 +1697,78 @@ class AttendanceAllowedIP(models.Model):
 
     def __str__(self):
         return f"AttendanceAllowedIP - {self.is_enabled}"
+
+
+class EmployeeAuthSettings(models.Model):
+    """
+    Singleton settings for employee authentication controls.
+    """
+
+    password_rotation_enabled = models.BooleanField(default=False)
+    rotation_interval_seconds = models.PositiveIntegerField(default=60)
+    rotation_started_at = models.DateTimeField(null=True, blank=True)
+    last_rotation_at = models.DateTimeField(null=True, blank=True)
+    emergency_mode_enabled = models.BooleanField(default=False)
+    emergency_password_hash = models.CharField(max_length=128, blank=True)
+    emergency_password_set_at = models.DateTimeField(null=True, blank=True)
+
+    def save(self, *args, **kwargs):
+        if not self.pk and EmployeeAuthSettings.objects.exists():
+            raise ValidationError(_("Only one EmployeeAuthSettings instance is allowed."))
+        return super().save(*args, **kwargs)
+
+    def __str__(self):
+        status = _("enabled") if self.password_rotation_enabled else _("disabled")
+        return f"EmployeeAuthSettings ({status})"
+
+
+class EmployeePasswordRotationState(models.Model):
+    """
+    Tracks password rotation state per employee user.
+    """
+
+    user = models.OneToOneField(
+        User, on_delete=models.CASCADE, related_name="password_rotation_state"
+    )
+    password_version = models.PositiveIntegerField(default=0)
+    last_rotated_at = models.DateTimeField(null=True, blank=True)
+    current_password_signed = models.TextField(blank=True)
+
+    def set_current_password(self, password: str) -> None:
+        self.current_password_signed = signing.dumps(password)
+
+    def get_current_password(self) -> str:
+        if not self.current_password_signed:
+            return ""
+        try:
+            return signing.loads(self.current_password_signed)
+        except signing.BadSignature:
+            return ""
+
+    def __str__(self):
+        return f"EmployeePasswordRotationState - {self.user.username}"
+
+
+class EmployeeSession(models.Model):
+    """
+    Tracks active employee sessions for single-session enforcement.
+    """
+
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="employee_sessions"
+    )
+    session_key = models.CharField(max_length=40, unique=True)
+    is_active = models.BooleanField(default=True)
+    started_at = models.DateTimeField(auto_now_add=True)
+    last_seen_at = models.DateTimeField(null=True, blank=True)
+    ended_at = models.DateTimeField(null=True, blank=True)
+    end_reason = models.CharField(max_length=32, blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(blank=True)
+    device_id = models.CharField(max_length=255, blank=True)
+
+    def __str__(self):
+        return f"{self.user.username} - {self.session_key}"
 
 
 class TrackLateComeEarlyOut(HorillaModel):

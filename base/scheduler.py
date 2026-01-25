@@ -1,5 +1,6 @@
 import calendar
 import sys
+import random
 from datetime import date, datetime, timedelta
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -435,6 +436,49 @@ def recurring_holiday():
         recurring_holiday.save()
 
 
+def rotate_employee_passwords(force: bool = False):
+    from django.contrib.auth.models import User
+    from django.utils import timezone
+
+    from base.models import EmployeeAuthSettings, EmployeePasswordRotationState
+    from employee.models import Employee
+
+    settings = EmployeeAuthSettings.objects.first()
+    if not settings:
+        return
+    if not settings.password_rotation_enabled or settings.emergency_mode_enabled:
+        return
+
+    now = timezone.now()
+    if (
+        not force
+        and settings.last_rotation_at
+        and (now - settings.last_rotation_at).total_seconds()
+        < settings.rotation_interval_seconds
+    ):
+        return
+
+    employees = Employee.objects.select_related("employee_user_id").filter(
+        employee_user_id__isnull=False
+    )
+    for employee in employees:
+        user = employee.employee_user_id
+        if user.is_staff or user.is_superuser:
+            continue
+        new_password = f"{random.randint(0, 999999):06d}"
+        user.set_password(new_password)
+        user.save(update_fields=["password"])
+
+        state, _ = EmployeePasswordRotationState.objects.get_or_create(user=user)
+        state.password_version += 1
+        state.last_rotated_at = now
+        state.set_current_password(new_password)
+        state.save()
+
+    settings.last_rotation_at = now
+    settings.save(update_fields=["last_rotation_at"])
+
+
 if not any(
     cmd in sys.argv
     for cmd in ["makemigrations", "migrate", "compilemessages", "flush", "shell"]
@@ -493,6 +537,16 @@ if not any(
             "interval",
             hours=4,
             id="job5",
+        )
+    except:
+        pass
+
+    try:
+        scheduler.add_job(
+            rotate_employee_passwords,
+            "interval",
+            minutes=1,
+            id="employee_password_rotation",
         )
     except:
         pass

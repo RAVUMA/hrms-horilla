@@ -13,6 +13,7 @@ import attendance.views.geofaceconfig
 import attendance.views.penalty
 import attendance.views.requests
 import attendance.views.search
+import attendance.views.tracking
 import base
 from base.forms import AttendanceAllowedIPForm
 from base.models import AttendanceAllowedIP
@@ -143,6 +144,11 @@ urlpatterns = [
     ),
     path("clock-in", attendance.views.clock_in_out.clock_in, name="clock-in"),
     path("clock-out", attendance.views.clock_in_out.clock_out, name="clock-out"),
+    path(
+        "tracking/",
+        attendance.views.tracking.tracking_view,
+        name="attendance-tracking",
+    ),
     path(
         "on-time-view/",
         views.on_time_view,

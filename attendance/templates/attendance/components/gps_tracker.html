@@ -1,0 +1,29 @@
+<script>
+    function getGPSLocation(callback) {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                function(position) {
+                    // Success - got location
+                    const locationData = {
+                        latitude: position.coords.latitude,
+                        longitude: position.coords.longitude,
+                        accuracy: position.coords.accuracy
+                    };
+                    callback(null, locationData);
+                },
+                function(error) {
+                    // Error or permission denied
+                    console.log('GPS Error:', error.message);
+                    callback(error, null);
+                },
+                {
+                    enableHighAccuracy: true,
+                    timeout: 5000,
+                    maximumAge: 0
+                }
+            );
+        } else {
+            callback(new Error('Geolocation not supported'), null);
+        }
+    }
+    </script>

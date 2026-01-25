@@ -8,12 +8,13 @@ from django.contrib.auth import logout
 from django.core.cache import cache
 from django.db.models import Q
 from django.shortcuts import redirect
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from base.backends import ConfiguredEmailBackend
 from base.context_processors import AllCompany
 from base.horilla_company_manager import HorillaCompanyManager
-from base.models import Company, ShiftRequest, WorkTypeRequest
+from base.models import Company, EmployeeSession, ShiftRequest, WorkTypeRequest
 from employee.models import (
     DisciplinaryAction,
     Employee,
@@ -193,6 +194,53 @@ class CompanyMiddleware:
 
         response = self.get_response(request)
         return response
+
+
+class SingleSessionEnforcementMiddleware:
+    """
+    Enforce a single active session for employee users.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        if (
+            not getattr(request, "user", None)
+            or request.user.is_anonymous
+            or request.user.is_staff
+            or request.user.is_superuser
+        ):
+            return self.get_response(request)
+
+        if not hasattr(request.user, "employee_get"):
+            return self.get_response(request)
+
+        path = request.path or ""
+        if path.startswith(("/login", "/logout", "/static", "/media")):
+            return self.get_response(request)
+
+        if not request.session.session_key:
+            request.session.save()
+        session_key = request.session.session_key
+        active_session = EmployeeSession.objects.filter(
+            user=request.user, session_key=session_key, is_active=True
+        ).first()
+
+        if not active_session:
+            logout(request)
+            messages.error(
+                request,
+                _("Your session has been terminated because you logged in from another device."),
+            )
+            return redirect("login")
+
+        active_session.last_seen_at = timezone.now()
+        active_session.ip_address = request.META.get("REMOTE_ADDR", "")
+        active_session.user_agent = request.META.get("HTTP_USER_AGENT", "")
+        active_session.save(update_fields=["last_seen_at", "ip_address", "user_agent"])
+
+        return self.get_response(request)
 
 
 class ForcePasswordChangeMiddleware:

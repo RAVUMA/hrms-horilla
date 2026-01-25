@@ -1,0 +1,142 @@
+{% load i18n %}
+
+<div class="oh-sticky-table">
+    <div class="oh-sticky-table__table">
+        <div class="oh-sticky-table__thead">
+            <div class="oh-sticky-table__tr">
+                <div class="oh-sticky-table__th">{% trans "Username" %}</div>
+                <div class="oh-sticky-table__th">{% trans "Employee" %}</div>
+                <div class="oh-sticky-table__th">{% trans "Password" %}</div>
+                <div class="oh-sticky-table__th">{% trans "Version" %}</div>
+                <div class="oh-sticky-table__th">{% trans "Last Rotated" %}</div>
+                <div class="oh-sticky-table__th">{% trans "Actions" %}</div>
+            </div>
+        </div>
+        <div class="oh-sticky-table__tbody">
+            {% for row in employee_password_states %}
+                <div class="oh-sticky-table__tr">
+                    <div class="oh-sticky-table__td">{{ row.user.username }}</div>
+                    <div class="oh-sticky-table__td">
+                        {{ row.employee.employee_first_name }} {{ row.employee.employee_last_name }}
+                    </div>
+                    <div class="oh-sticky-table__td">
+                        {% if row.state %}
+                            {{ row.state.get_current_password }}
+                        {% else %}
+                            {% trans "Not generated" %}
+                        {% endif %}
+                    </div>
+                    <div class="oh-sticky-table__td">
+                        {% if row.state %}{{ row.state.password_version }}{% else %}-{% endif %}
+                    </div>
+                    <div class="oh-sticky-table__td">
+                        {% if row.state and row.state.last_rotated_at %}
+                            {{ row.state.last_rotated_at }}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </div>
+                    <div class="oh-sticky-table__td">
+                        <form action="{% url 'employee-auth-admin-logout' %}" method="post">
+                            {% csrf_token %}
+                            <input type="hidden" name="user_id" value="{{ row.user.id }}" />
+                            <button type="submit" class="oh-btn oh-btn--danger-outline oh-btn--light-bkg">
+                                {% trans "Force Logout" %}
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            {% empty %}
+                <div class="oh-sticky-table__tr">
+                    <div class="oh-sticky-table__td" colspan="6">
+                        {% trans "No employees found." %}
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+{% if page_obj.has_previous or page_obj.has_next %}
+<div class="oh-wrapper w-100">
+    <div class="oh-pagination">
+        <span class="oh-pagination__page">
+            {% trans "Page" %} {{ page_obj.number }} {% trans "of" %} {{ page_obj.paginator.num_pages }}.
+        </span>
+
+        <nav class="oh-pagination__nav">
+            <div class="oh-pagination__input-container me-3">
+                <span class="oh-pagination__label me-1">{% trans "Page" %}</span>
+                <input
+                    type="number"
+                    name="page"
+                    class="oh-pagination__input"
+                    value="{{ page_obj.number }}"
+                    min="1"
+                    hx-get="{% url 'employee-auth-table' %}?{{ pd }}"
+                    hx-target="#employee-auth-table"
+                    hx-swap="innerHTML"
+                    oninput="var p=document.getElementById('employee-auth-page'); if(p){p.value=this.value;}"
+                />
+                <span class="oh-pagination__label">{% trans "of" %} {{ page_obj.paginator.num_pages }}</span>
+            </div>
+
+            <ul class="oh-pagination__items">
+                {% if page_obj.has_previous %}
+                    <li class="oh-pagination__item oh-pagination__item--wide">
+                        <a
+                            hx-get="{% url 'employee-auth-table' %}?{{ pd }}&page=1"
+                            hx-target="#employee-auth-table"
+                            hx-swap="innerHTML"
+                            href="?{{ pd }}&page=1"
+                            onclick="var p=document.getElementById('employee-auth-page'); if(p){p.value=1;}"
+                            class="oh-pagination__link"
+                        >{% trans "First" %}</a>
+                    </li>
+                    <li class="oh-pagination__item oh-pagination__item--wide">
+                        <a
+                            hx-get="{% url 'employee-auth-table' %}?{{ pd }}&page={{ page_obj.previous_page_number }}"
+                            hx-target="#employee-auth-table"
+                            hx-swap="innerHTML"
+                            href="?{{ pd }}&page={{ page_obj.previous_page_number }}"
+                            onclick="var p=document.getElementById('employee-auth-page'); if(p){p.value={{ page_obj.previous_page_number }};}"
+                            class="oh-pagination__link"
+                        >{% trans "Previous" %}</a>
+                    </li>
+                {% endif %}
+                {% if page_obj.has_next %}
+                    <li class="oh-pagination__item oh-pagination__item--wide">
+                        <a
+                            hx-get="{% url 'employee-auth-table' %}?{{ pd }}&page={{ page_obj.next_page_number }}"
+                            hx-target="#employee-auth-table"
+                            hx-swap="innerHTML"
+                            href="?{{ pd }}&page={{ page_obj.next_page_number }}"
+                            onclick="var p=document.getElementById('employee-auth-page'); if(p){p.value={{ page_obj.next_page_number }};}"
+                            class="oh-pagination__link"
+                        >{% trans "Next" %}</a>
+                    </li>
+                    <li class="oh-pagination__item oh-pagination__item--wide">
+                        <a
+                            hx-get="{% url 'employee-auth-table' %}?{{ pd }}&page={{ page_obj.paginator.num_pages }}"
+                            hx-target="#employee-auth-table"
+                            hx-swap="innerHTML"
+                            href="?{{ pd }}&page={{ page_obj.paginator.num_pages }}"
+                            onclick="var p=document.getElementById('employee-auth-page'); if(p){p.value={{ page_obj.paginator.num_pages }};}"
+                            class="oh-pagination__link"
+                        >{% trans "Last" %}</a>
+                    </li>
+                {% endif %}
+            </ul>
+        </nav>
+    </div>
+</div>
+{% endif %}
+
+<script>
+    (function () {
+        var pageInput = document.getElementById("employee-auth-page");
+        if (pageInput) {
+            pageInput.value = "{{ page_obj.number }}";
+        }
+    })();
+</script>

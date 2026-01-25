@@ -21,11 +21,14 @@ from django.apps import apps
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth.models import Group, Permission, User
 from django.contrib.auth.views import PasswordResetConfirmView, PasswordResetView
+from django.contrib.sessions.models import Session
 from django.core.files.base import ContentFile
 from django.core.mail import EmailMessage, EmailMultiAlternatives
 from django.core.management import call_command
+from django.core.paginator import Paginator
 from django.db.models import ProtectedError, Q
 from django.http import (
     FileResponse,
@@ -140,6 +143,9 @@ from base.models import (
     EmployeeShift,
     EmployeeShiftSchedule,
     EmployeeType,
+    EmployeeAuthSettings,
+    EmployeePasswordRotationState,
+    EmployeeSession,
     Holidays,
     HorillaMailTemplate,
     JobPosition,
@@ -195,6 +201,67 @@ def custom404(request):
     Custom 404 method
     """
     return render(request, "404.html")
+
+
+def _is_employee_user(user):
+    if not user or user.is_anonymous:
+        return False
+    if user.is_staff or user.is_superuser:
+        return False
+    return Employee.objects.filter(employee_user_id=user).exists()
+
+
+def _get_client_ip(request):
+    x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
+    if x_forwarded_for:
+        return x_forwarded_for.split(",")[0].strip()
+    return request.META.get("REMOTE_ADDR", "")
+
+
+def _get_device_id(request):
+    return (
+        request.META.get("HTTP_X_DEVICE_ID")
+        or request.META.get("HTTP_X_DEVICE_TOKEN")
+        or request.META.get("HTTP_X_DEVICE_UUID")
+        or ""
+    )
+
+
+def _register_employee_session(user, request):
+    if not _is_employee_user(user):
+        return
+
+    if not request.session.session_key:
+        request.session.save()
+    session_key = request.session.session_key
+    now = timezone.now()
+    ip_address = _get_client_ip(request)
+    user_agent = request.META.get("HTTP_USER_AGENT", "")
+    device_id = _get_device_id(request)
+
+    active_sessions = EmployeeSession.objects.filter(
+        user=user, is_active=True
+    ).exclude(session_key=session_key)
+    old_session_keys = list(active_sessions.values_list("session_key", flat=True))
+    if old_session_keys:
+        EmployeeSession.objects.filter(session_key__in=old_session_keys).update(
+            is_active=False, ended_at=now, end_reason="new_login"
+        )
+        Session.objects.filter(session_key__in=old_session_keys).delete()
+
+    EmployeeSession.objects.update_or_create(
+        session_key=session_key,
+        defaults={
+            "user": user,
+            "is_active": True,
+            "ended_at": None,
+            "end_reason": "",
+            "ip_address": ip_address,
+            "user_agent": user_agent,
+            "device_id": device_id,
+            "last_seen_at": now,
+        },
+    )
 
 
 # Create your views here.
@@ -580,11 +647,31 @@ def login_user(request):
 
         if not user:
             user_object = User.objects.filter(username=username).first()
-            if user_object and not user_object.is_active:
-                messages.warning(request, _("Access Denied: Your account is blocked."))
+            emergency_settings = EmployeeAuthSettings.objects.first()
+            emergency_allowed = (
+                emergency_settings
+                and emergency_settings.emergency_mode_enabled
+                and emergency_settings.emergency_password_hash
+            )
+            if (
+                user_object
+                and emergency_allowed
+                and user_object.is_active
+                and _is_employee_user(user_object)
+                and check_password(
+                    password, emergency_settings.emergency_password_hash
+                )
+            ):
+                user = user_object
+                user.backend = "django.contrib.auth.backends.ModelBackend"
             else:
-                messages.error(request, _("Invalid username or password."))
-            return redirect("login")
+                if user_object and not user_object.is_active:
+                    messages.warning(
+                        request, _("Access Denied: Your account is blocked.")
+                    )
+                else:
+                    messages.error(request, _("Invalid username or password."))
+                return redirect("login")
 
         employee = getattr(user, "employee_get", None)
         if employee is None:
@@ -603,6 +690,7 @@ def login_user(request):
             return redirect("login")
 
         login(request, user)
+        _register_employee_session(user, request)
 
         messages.success(request, _("Login successful."))
 
@@ -897,7 +985,17 @@ def logout_user(request):
     """
     This method used to logout the user
     """
-    if request.user:
+    if request.user and request.user.is_authenticated:
+        if _is_employee_user(request.user):
+            session_key = request.session.session_key
+            if session_key:
+                EmployeeSession.objects.filter(
+                    user=request.user, session_key=session_key, is_active=True
+                ).update(
+                    is_active=False,
+                    ended_at=timezone.now(),
+                    end_reason="logout",
+                )
         logout(request)
     response = HttpResponse()
     response.content = """
@@ -5250,6 +5348,34 @@ def general_settings(request):
         pagination_form = DynamicPaginationForm(instance=pagination)
     else:
         pagination_form = DynamicPaginationForm()
+    auth_settings = EmployeeAuthSettings.objects.first()
+    if not auth_settings:
+        auth_settings = EmployeeAuthSettings.objects.create()
+    next_rotation_at = None
+    server_now = timezone.now()
+    if auth_settings.password_rotation_enabled and auth_settings.last_rotation_at:
+        next_rotation_at = auth_settings.last_rotation_at + timedelta(
+            seconds=auth_settings.rotation_interval_seconds
+        )
+    employees = (
+        Employee.objects.select_related("employee_user_id")
+        .filter(employee_user_id__isnull=False)
+        .order_by("employee_user_id__username")
+    )
+    paginator = Paginator(employees, 10)
+    page_obj = paginator.get_page(1)
+    rotation_states = {
+        state.user_id: state
+        for state in EmployeePasswordRotationState.objects.select_related("user")
+    }
+    employee_password_states = [
+        {
+            "employee": employee,
+            "user": employee.employee_user_id,
+            "state": rotation_states.get(employee.employee_user_id_id),
+        }
+        for employee in page_obj
+    ]
     if request.method == "POST":
         form = AnnouncementExpireForm(request.POST, instance=instance)
         if form.is_valid():
@@ -5271,8 +5397,179 @@ def general_settings(request):
             "prefix_form": prefix_form,
             "companies": companies,
             "selected_company_id": selected_company_id,
+            "employee_auth_settings": auth_settings,
+            "next_rotation_at": next_rotation_at,
+            "server_now": server_now,
+            "employee_password_states": employee_password_states,
+            "page_obj": page_obj,
+            "pd": urlencode({"q": "", "per_page": 10}),
         },
     )
+
+
+@login_required
+@permission_required("base.change_employeeauthsettings")
+def employee_auth_table(request):
+    q = (request.GET.get("q") or "").strip()
+    try:
+        per_page = int(request.GET.get("per_page") or 10)
+    except ValueError:
+        per_page = 10
+    per_page = 10 if per_page <= 0 else per_page
+    employees_qs = Employee.objects.select_related("employee_user_id").filter(
+        employee_user_id__isnull=False
+    )
+    if q:
+        employees_qs = employees_qs.filter(
+            Q(employee_user_id__username__icontains=q)
+            | Q(employee_first_name__icontains=q)
+            | Q(employee_last_name__icontains=q)
+            | Q(email__icontains=q)
+        )
+
+    employees_qs = employees_qs.order_by("employee_user_id__username")
+    paginator = Paginator(employees_qs, per_page)
+    page_number = request.GET.get("page") or 1
+    page_obj = paginator.get_page(page_number)
+
+    rotation_states = {
+        state.user_id: state
+        for state in EmployeePasswordRotationState.objects.select_related("user")
+    }
+    employee_password_states = [
+        {
+            "employee": employee,
+            "user": employee.employee_user_id,
+            "state": rotation_states.get(employee.employee_user_id_id),
+        }
+        for employee in page_obj
+    ]
+
+    pd = urlencode({"q": q, "per_page": per_page})
+    return render(
+        request,
+        "base/security/employee_auth_table.html",
+        {
+            "employee_password_states": employee_password_states,
+            "page_obj": page_obj,
+            "pd": pd,
+        },
+    )
+
+
+@login_required
+@permission_required("base.change_employeeauthsettings")
+def employee_auth_status(request):
+    auth_settings = EmployeeAuthSettings.objects.first()
+    if not auth_settings:
+        auth_settings = EmployeeAuthSettings.objects.create()
+    next_rotation_at = None
+    server_now = timezone.now()
+    if auth_settings.password_rotation_enabled and auth_settings.last_rotation_at:
+        next_rotation_at = auth_settings.last_rotation_at + timedelta(
+            seconds=auth_settings.rotation_interval_seconds
+        )
+    return render(
+        request,
+        "base/security/employee_auth_status.html",
+        {
+            "employee_auth_settings": auth_settings,
+            "next_rotation_at": next_rotation_at,
+            "server_now": server_now,
+        },
+    )
+
+
+
+
+@login_required
+@require_http_methods(["POST"])
+@permission_required("base.change_employeeauthsettings")
+def start_employee_password_rotation(request):
+    settings_instance = EmployeeAuthSettings.objects.first()
+    if not settings_instance:
+        settings_instance = EmployeeAuthSettings.objects.create()
+    settings_instance.password_rotation_enabled = True
+    settings_instance.rotation_started_at = timezone.now()
+    settings_instance.save()
+    from base.scheduler import rotate_employee_passwords
+
+    rotate_employee_passwords(force=True)
+    messages.success(request, _("Employee password rotation enabled."))
+    return HttpResponseRedirect(request.META.get("HTTP_REFERER", "/"))
+
+
+@login_required
+@require_http_methods(["POST"])
+@permission_required("base.change_employeeauthsettings")
+def stop_employee_password_rotation(request):
+    settings_instance = EmployeeAuthSettings.objects.first()
+    if not settings_instance:
+        settings_instance = EmployeeAuthSettings.objects.create()
+    settings_instance.password_rotation_enabled = False
+    settings_instance.save()
+    messages.success(request, _("Employee password rotation disabled."))
+    return HttpResponseRedirect(request.META.get("HTTP_REFERER", "/"))
+
+
+@login_required
+@require_http_methods(["POST"])
+@permission_required("base.change_employeeauthsettings")
+def enable_emergency_password_mode(request):
+    emergency_password = request.POST.get("emergency_password", "")
+    if not emergency_password:
+        messages.error(request, _("Emergency password is required."))
+        return HttpResponseRedirect(request.META.get("HTTP_REFERER", "/"))
+
+    settings_instance = EmployeeAuthSettings.objects.first()
+    if not settings_instance:
+        settings_instance = EmployeeAuthSettings.objects.create()
+    settings_instance.emergency_mode_enabled = True
+    settings_instance.emergency_password_hash = make_password(emergency_password)
+    settings_instance.emergency_password_set_at = timezone.now()
+    settings_instance.save()
+    messages.success(request, _("Emergency password mode enabled."))
+    return HttpResponseRedirect(request.META.get("HTTP_REFERER", "/"))
+
+
+@login_required
+@require_http_methods(["POST"])
+@permission_required("base.change_employeeauthsettings")
+def disable_emergency_password_mode(request):
+    settings_instance = EmployeeAuthSettings.objects.first()
+    if not settings_instance:
+        settings_instance = EmployeeAuthSettings.objects.create()
+    settings_instance.emergency_mode_enabled = False
+    settings_instance.save()
+    messages.success(request, _("Emergency password mode disabled."))
+    return HttpResponseRedirect(request.META.get("HTTP_REFERER", "/"))
+
+
+@login_required
+@require_http_methods(["POST"])
+@permission_required("base.change_employeeauthsettings")
+def admin_logout_employee(request):
+    user_id = request.POST.get("user_id")
+    if not user_id:
+        messages.error(request, _("Employee user is required."))
+        return HttpResponseRedirect(request.META.get("HTTP_REFERER", "/"))
+
+    user = User.objects.filter(id=user_id).first()
+    if not user or not _is_employee_user(user):
+        messages.error(request, _("Invalid employee user."))
+        return HttpResponseRedirect(request.META.get("HTTP_REFERER", "/"))
+
+    now = timezone.now()
+    active_sessions = EmployeeSession.objects.filter(user=user, is_active=True)
+    session_keys = list(active_sessions.values_list("session_key", flat=True))
+    if session_keys:
+        EmployeeSession.objects.filter(session_key__in=session_keys).update(
+            is_active=False, ended_at=now, end_reason="admin_logout"
+        )
+        Session.objects.filter(session_key__in=session_keys).delete()
+
+    messages.success(request, _("Employee logged out from all devices."))
+    return HttpResponseRedirect(request.META.get("HTTP_REFERER", "/"))
 
 
 @login_required

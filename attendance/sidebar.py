@@ -52,6 +52,11 @@ SUBMENUS = [
         "menu": _("My Attendances"),
         "redirect": reverse("view-my-attendance"),
     },
+    {
+        "menu": _("GPS Tracking"),
+        "redirect": reverse("attendance-tracking"),
+        "accessibility": "attendance.sidebar.gps_tracking_accessibility",
+    },
 ]
 
 
@@ -95,3 +100,12 @@ def tracking_accessibility(request, submenu, user_perms, *args, **kwargs):
     Determine if late come/early out tracking is enabled.
     """
     return enable_late_come_early_out_tracking(None).get("tracking")
+
+
+def gps_tracking_accessibility(request, submenu, user_perms, *args, **kwargs):
+    """
+    Check if the user has permission to view attendance or is a reporting manager for GPS tracking.
+    """
+    return request.user.has_perm("attendance.view_attendance") or is_reportingmanager(
+        request.user
+    )

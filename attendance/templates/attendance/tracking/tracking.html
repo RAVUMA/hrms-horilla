@@ -1,0 +1,440 @@
+{% extends 'index.html' %}
+{% load i18n %}
+{% load static %}
+
+{% block content %}
+<style>
+    .tracking-container {
+        padding: 20px;
+    }
+    
+    .tracking-header {
+        margin-bottom: 20px;
+    }
+    
+    .tracking-header h1 {
+        color: #333;
+        margin-bottom: 10px;
+        font-size: 28px;
+    }
+    
+    .date-info {
+        color: #666;
+        font-size: 14px;
+    }
+    
+    .filter-section {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 30px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    
+    .filter-row {
+        display: flex;
+        gap: 15px;
+        align-items: flex-end;
+        flex-wrap: wrap;
+    }
+    
+    .filter-group {
+        flex: 1;
+        min-width: 200px;
+    }
+    
+    .filter-label {
+        display: block;
+        margin-bottom: 8px;
+        color: #555;
+        font-weight: 500;
+        font-size: 14px;
+    }
+    
+    .filter-input {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid #dee2e6;
+        border-radius: 6px;
+        font-size: 14px;
+        transition: border-color 0.3s;
+    }
+    
+    .filter-input:focus {
+        outline: none;
+        border-color: #4CAF50;
+    }
+    
+    .filter-btn {
+        padding: 10px 20px;
+        background: #4CAF50;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        font-size: 14px;
+        cursor: pointer;
+        transition: background 0.3s;
+        white-space: nowrap;
+    }
+    
+    .filter-btn:hover {
+        background: #45a049;
+    }
+    
+    .filter-btn-secondary {
+        background: #6c757d;
+    }
+    
+    .filter-btn-secondary:hover {
+        background: #5a6268;
+    }
+    
+    .section {
+        margin-bottom: 40px;
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    
+    .section-title {
+        font-size: 20px;
+        color: #444;
+        margin-bottom: 15px;
+        padding-bottom: 10px;
+        border-bottom: 2px solid #4CAF50;
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+    
+    .active-badge {
+        background: #4CAF50;
+        color: white;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        margin-left: 10px;
+    }
+    
+    .completed-badge {
+        background: #2196F3;
+        color: white;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        margin-left: 10px;
+    }
+    
+    .tracking-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 10px;
+    }
+    
+    .tracking-table thead {
+        background: #f8f9fa;
+    }
+    
+    .tracking-table th {
+        padding: 12px;
+        text-align: left;
+        font-weight: 600;
+        color: #555;
+        border-bottom: 2px solid #dee2e6;
+        font-size: 14px;
+    }
+    
+    .tracking-table td {
+        padding: 12px;
+        border-bottom: 1px solid #dee2e6;
+        font-size: 14px;
+        color: #333;
+    }
+    
+    .tracking-table tr:hover {
+        background: #f8f9fa;
+    }
+    
+    .no-gps {
+        color: #999;
+        font-style: italic;
+    }
+    
+    .gps-coords {
+        font-family: 'Courier New', monospace;
+        font-size: 12px;
+        color: #2196F3;
+    }
+    
+    .location-address {
+        color: #333;
+        font-size: 13px;
+        max-width: 250px;
+    }
+    
+    .map-link {
+        display: inline-block;
+        color: #4CAF50;
+        text-decoration: none;
+        font-size: 12px;
+        padding: 4px 8px;
+        border: 1px solid #4CAF50;
+        border-radius: 4px;
+        transition: all 0.3s;
+        margin-top: 4px;
+    }
+    
+    .map-link:hover {
+        background: #4CAF50;
+        color: white;
+    }
+    
+    .accuracy {
+        font-size: 11px;
+        color: #666;
+    }
+    
+    .empty-message {
+        text-align: center;
+        padding: 40px;
+        color: #999;
+        font-size: 16px;
+    }
+    
+    .quick-date-btns {
+        display: flex;
+        gap: 10px;
+        margin-top: 10px;
+        flex-wrap: wrap;
+    }
+    
+    .quick-date-btn {
+        padding: 6px 12px;
+        background: #f8f9fa;
+        color: #333;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        font-size: 12px;
+        cursor: pointer;
+        transition: all 0.3s;
+    }
+    
+    .quick-date-btn:hover {
+        background: #e9ecef;
+    }
+    
+    .quick-date-btn.active {
+        background: #4CAF50;
+        color: white;
+        border-color: #4CAF50;
+    }
+</style>
+
+<div class="tracking-container">
+    <div class="tracking-header">
+        <h1>{% trans "GPS Attendance Tracking" %}</h1>
+        <div class="date-info">{% trans "Viewing data for" %}: {{ filter_date|date:"l, F d, Y" }}</div>
+    </div>
+    
+    <!-- Filter Section -->
+    <div class="filter-section">
+        <form method="GET" action="{% url 'attendance-tracking' %}">
+            <div class="filter-row">
+                <div class="filter-group">
+                    <label class="filter-label">{% trans "Search Employee" %}</label>
+                    <input 
+                        type="text" 
+                        name="employee" 
+                        class="filter-input" 
+                        placeholder="{% trans 'Enter employee name...' %}"
+                        value="{{ employee_search }}"
+                    />
+                </div>
+                
+                <div class="filter-group">
+                    <label class="filter-label">{% trans "Select Date" %}</label>
+                    <input 
+                        type="date" 
+                        name="date" 
+                        class="filter-input" 
+                        value="{{ filter_date|date:'Y-m-d' }}"
+                        max="{{ today|date:'Y-m-d' }}"
+                    />
+                </div>
+                
+                <div class="filter-group" style="flex: 0;">
+                    <button type="submit" class="filter-btn">
+                        <ion-icon name="search-outline" style="vertical-align: middle;"></ion-icon>
+                        {% trans "Search" %}
+                    </button>
+                </div>
+                
+                <div class="filter-group" style="flex: 0;">
+                    <a href="{% url 'attendance-tracking' %}" class="filter-btn filter-btn-secondary">
+                        <ion-icon name="refresh-outline" style="vertical-align: middle;"></ion-icon>
+                        {% trans "Reset" %}
+                    </a>
+                </div>
+            </div>
+            
+        </form>
+    </div>
+    
+    <!-- Active Check-ins Section -->
+    <div class="section">
+        <h2 class="section-title">
+            <span>{% trans "Currently Clocked In" %}</span>
+            <span class="active-badge">{{ active_checkins.count }} {% trans "Active" %}</span>
+        </h2>
+        
+        {% if active_checkins %}
+        <table class="tracking-table">
+            <thead>
+                <tr>
+                    <th>{% trans "Employee" %}</th>
+                    <th>{% trans "Check-In Time" %}</th>
+                    <th>{% trans "Check-In Location" %}</th>
+                    <th>{% trans "Accuracy" %}</th>
+                    <th>{% trans "Map" %}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for activity in active_checkins %}
+                <tr>
+                    <td>
+                        <div class="oh-profile oh-profile--md">
+                            <div class="oh-profile__avatar mr-1">
+                                <img src="{{activity.employee_id.get_avatar}}" class="oh-profile__image" alt="" />
+                            </div>
+                            <span class="oh-profile__name oh-text--dark">{{ activity.employee_id.employee_user_id.username }}</span>
+                        </div>
+                    </td>
+                    <td>{{ activity.clock_in|date:"h:i A" }}</td>
+                    <td>
+                        {% if activity.check_in_address %}
+                            <div class="location-address">{{ activity.check_in_address|truncatewords:10 }}</div>
+                        {% elif activity.check_in_latitude and activity.check_in_longitude %}
+                            <span class="gps-coords">{{ activity.check_in_latitude }}, {{ activity.check_in_longitude }}</span>
+                        {% else %}
+                            <span class="no-gps">{% trans "No GPS data" %}</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if activity.location_accuracy %}
+                            <span class="accuracy">±{{ activity.location_accuracy|floatformat:0 }}m</span>
+                        {% else %}
+                            <span class="no-gps">N/A</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if activity.check_in_latitude and activity.check_in_longitude %}
+                            <a href="https://www.google.com/maps?q={{ activity.check_in_latitude }},{{ activity.check_in_longitude }}" 
+                               target="_blank" 
+                               class="map-link">{% trans "View Map" %}</a>
+                        {% else %}
+                            <span class="no-gps">N/A</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-message">
+            {% if employee_search %}
+                {% trans "No employees found matching your search" %}
+            {% else %}
+                {% trans "No employees currently clocked in" %}
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+    
+    <!-- Completed Activities Section -->
+    <div class="section">
+        <h2 class="section-title">
+            <span>{% trans "Completed Check-ins" %}</span>
+            <span class="completed-badge">{{ completed_activities.count }} {% trans "Completed" %}</span>
+        </h2>
+        
+        {% if completed_activities %}
+        <table class="tracking-table">
+            <thead>
+                <tr>
+                    <th>{% trans "Employee" %}</th>
+                    <th>{% trans "Check-In Time" %}</th>
+                    <th>{% trans "Check-In Location" %}</th>
+                    <th>{% trans "Check-Out Time" %}</th>
+                    <th>{% trans "Check-Out Location" %}</th>
+                    <th>{% trans "Duration" %}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for activity in completed_activities %}
+                <tr>
+                    <td>
+                        <div class="oh-profile oh-profile--md">
+                            <div class="oh-profile__avatar mr-1">
+                                <img src="{{activity.employee_id.get_avatar}}" class="oh-profile__image" alt="" />
+                            </div>
+                            <span class="oh-profile__name oh-text--dark">{{ activity.employee_id.employee_user_id.username }}</span>
+                        </div>
+                    </td>
+                    <td>
+                        {{ activity.clock_in|date:"h:i A" }}
+                    </td>
+                    <td>
+                        {% if activity.check_in_address %}
+                            <div class="location-address">{{ activity.check_in_address|truncatewords:8 }}</div>
+                            <a href="https://www.google.com/maps?q={{ activity.check_in_latitude }},{{ activity.check_in_longitude }}" 
+                               target="_blank" 
+                               class="map-link">{% trans "View Map" %}</a>
+                        {% elif activity.check_in_latitude and activity.check_in_longitude %}
+                            <span class="gps-coords">{{ activity.check_in_latitude }}, {{ activity.check_in_longitude }}</span>
+                            <br>
+                            <a href="https://www.google.com/maps?q={{ activity.check_in_latitude }},{{ activity.check_in_longitude }}" 
+                               target="_blank" 
+                               class="map-link">{% trans "View Map" %}</a>
+                        {% else %}
+                            <span class="no-gps">{% trans "No GPS" %}</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {{ activity.clock_out|date:"h:i A" }}
+                    </td>
+                    <td>
+                        {% if activity.check_out_address %}
+                            <div class="location-address">{{ activity.check_out_address|truncatewords:8 }}</div>
+                            <a href="https://www.google.com/maps?q={{ activity.check_out_latitude }},{{ activity.check_out_longitude }}" 
+                               target="_blank" 
+                               class="map-link">{% trans "View Map" %}</a>
+                        {% elif activity.check_out_latitude and activity.check_out_longitude %}
+                            <span class="gps-coords">{{ activity.check_out_latitude }}, {{ activity.check_out_longitude }}</span>
+                            <br>
+                            <a href="https://www.google.com/maps?q={{ activity.check_out_latitude }},{{ activity.check_out_longitude }}" 
+                               target="_blank" 
+                               class="map-link">{% trans "View Map" %}</a>
+                        {% else %}
+                            <span class="no-gps">{% trans "No GPS" %}</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {{ activity.duration_display }}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-message">
+            {% if employee_search %}
+                {% trans "No completed check-ins found matching your search" %}
+            {% else %}
+                {% trans "No completed check-ins for this date" %}
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
