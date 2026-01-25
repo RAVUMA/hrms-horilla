@@ -29,53 +29,73 @@
         </form>
         <div
             class="ms-2 text-muted"
-            id="rotation-status"
-            data-interval-seconds="{{ employee_auth_settings.rotation_interval_seconds }}"
-            data-last-rotation="{% if employee_auth_settings.last_rotation_at %}{{ employee_auth_settings.last_rotation_at|date:'c' }}{% endif %}"
+            id="employee-auth-status"
+            hx-get="{% url 'employee-auth-status' %}"
+            hx-trigger="load, every 60s"
+            hx-swap="innerHTML"
         >
-            {% if employee_auth_settings.password_rotation_enabled %}
-                {% trans "Next update in" %}: <span id="rotation-countdown">--:--</span>
-                {% if employee_auth_settings.last_rotation_at %}
-                    | {% trans "Last Rotation" %}: {{ employee_auth_settings.last_rotation_at }}
-                {% endif %}
-            {% else %}
-                <span class="oh-badge oh-badge--danger">{% trans "Stopped" %}</span>
-            {% endif %}
+            {% include "base/security/employee_auth_status.html" %}
         </div>
     </div>
     <script>
         (function () {
-            const statusEl = document.getElementById("rotation-status");
-            const countdownEl = document.getElementById("rotation-countdown");
-            if (!statusEl || !countdownEl) return;
+            function initCountdown() {
+                const statusEl = document.getElementById("rotation-status");
+                const countdownEl = document.getElementById("rotation-countdown");
+                if (!statusEl || !countdownEl) return;
 
-            const intervalSeconds = parseInt(statusEl.dataset.intervalSeconds || "0", 10);
-            const lastRotationRaw = statusEl.dataset.lastRotation || "";
-            if (!intervalSeconds || !lastRotationRaw) {
-                countdownEl.textContent = "--:--";
-                return;
-            }
-
-            let lastRotation = new Date(lastRotationRaw);
-            if (Number.isNaN(lastRotation.getTime())) {
-                countdownEl.textContent = "--:--";
-                return;
-            }
-
-            function tick() {
-                const nextAt = new Date(lastRotation.getTime() + intervalSeconds * 1000);
-                const remainingMs = Math.max(0, nextAt.getTime() - Date.now());
-                const remainingSec = Math.ceil(remainingMs / 1000);
-                if (remainingSec <= 0) {
-                    lastRotation = new Date(nextAt.getTime());
+                const intervalSeconds = parseInt(
+                    statusEl.dataset.intervalSeconds || "0",
+                    10
+                );
+                const nextRotationRaw = statusEl.dataset.nextRotation || "";
+                const serverNowRaw = statusEl.dataset.serverNow || "";
+                if (!intervalSeconds || !nextRotationRaw) {
+                    countdownEl.textContent = "--:--";
+                    return;
                 }
-                const min = String(Math.floor(remainingSec / 60)).padStart(2, "0");
-                const sec = String(remainingSec % 60).padStart(2, "0");
-                countdownEl.textContent = `${min}:${sec}`;
+
+                const nextRotation = new Date(nextRotationRaw);
+                const serverNow = serverNowRaw ? new Date(serverNowRaw) : null;
+                if (Number.isNaN(nextRotation.getTime())) {
+                    countdownEl.textContent = "--:--";
+                    return;
+                }
+
+                const offsetMs =
+                    serverNow && !Number.isNaN(serverNow.getTime())
+                        ? serverNow.getTime() - Date.now()
+                        : 0;
+
+                if (window.__rotationCountdownTimer) {
+                    clearInterval(window.__rotationCountdownTimer);
+                }
+
+                function tick() {
+                    const now = Date.now() + offsetMs;
+                    let remainingMs = nextRotation.getTime() - now;
+                    if (remainingMs <= 0) {
+                        const cycles = Math.floor(
+                            Math.abs(remainingMs) / (intervalSeconds * 1000)
+                        ) + 1;
+                        remainingMs += cycles * intervalSeconds * 1000;
+                    }
+                    const remainingSec = Math.ceil(remainingMs / 1000);
+                    const min = String(Math.floor(remainingSec / 60)).padStart(2, "0");
+                    const sec = String(remainingSec % 60).padStart(2, "0");
+                    countdownEl.textContent = `${min}:${sec}`;
+                }
+
+                tick();
+                window.__rotationCountdownTimer = setInterval(tick, 1000);
             }
 
-            tick();
-            setInterval(tick, 1000);
+            document.addEventListener("htmx:afterSwap", function (evt) {
+                if (evt.target && evt.target.id === "employee-auth-status") {
+                    initCountdown();
+                }
+            });
+            initCountdown();
         })();
     </script>
 
@@ -116,60 +136,43 @@
         </h3>
     </div>
 
-    <div class="oh-sticky-table">
-        <div class="oh-sticky-table__table">
-            <div class="oh-sticky-table__thead">
-                <div class="oh-sticky-table__tr">
-                    <div class="oh-sticky-table__th">{% trans "Username" %}</div>
-                    <div class="oh-sticky-table__th">{% trans "Employee" %}</div>
-                    <div class="oh-sticky-table__th">{% trans "Password" %}</div>
-                    <div class="oh-sticky-table__th">{% trans "Version" %}</div>
-                    <div class="oh-sticky-table__th">{% trans "Last Rotated" %}</div>
-                    <div class="oh-sticky-table__th">{% trans "Actions" %}</div>
-                </div>
-            </div>
-            <div class="oh-sticky-table__tbody">
-                {% for row in employee_password_states %}
-                    <div class="oh-sticky-table__tr">
-                        <div class="oh-sticky-table__td">{{ row.user.username }}</div>
-                        <div class="oh-sticky-table__td">
-                            {{ row.employee.employee_first_name }} {{ row.employee.employee_last_name }}
-                        </div>
-                        <div class="oh-sticky-table__td">
-                            {% if row.state %}
-                                {{ row.state.get_current_password }}
-                            {% else %}
-                                {% trans "Not generated" %}
-                            {% endif %}
-                        </div>
-                        <div class="oh-sticky-table__td">
-                            {% if row.state %}{{ row.state.password_version }}{% else %}-{% endif %}
-                        </div>
-                        <div class="oh-sticky-table__td">
-                            {% if row.state and row.state.last_rotated_at %}
-                                {{ row.state.last_rotated_at }}
-                            {% else %}
-                                -
-                            {% endif %}
-                        </div>
-                        <div class="oh-sticky-table__td">
-                            <form action="{% url 'employee-auth-admin-logout' %}" method="post">
-                                {% csrf_token %}
-                                <input type="hidden" name="user_id" value="{{ row.user.id }}" />
-                                <button type="submit" class="oh-btn oh-btn--danger-outline oh-btn--light-bkg">
-                                    {% trans "Force Logout" %}
-                                </button>
-                            </form>
-                        </div>
-                    </div>
-                {% empty %}
-                    <div class="oh-sticky-table__tr">
-                        <div class="oh-sticky-table__td" colspan="6">
-                            {% trans "No employees found." %}
-                        </div>
-                    </div>
-                {% endfor %}
-            </div>
-        </div>
+    <form
+        id="employee-auth-filter-form"
+        class="d-flex flex-wrap gap-2 align-items-center mb-2"
+        hx-get="{% url 'employee-auth-table' %}"
+        hx-target="#employee-auth-table"
+        hx-trigger="keyup changed delay:300ms from:#employee-auth-search, change from:#employee-auth-per-page"
+    >
+        <input type="hidden" id="employee-auth-page" name="page" value="1" />
+        <input
+            id="employee-auth-search"
+            type="text"
+            name="q"
+            value="{{ request.GET.q }}"
+            class="oh-input"
+            placeholder="{% trans 'Search by username, name, or email' %}"
+            oninput="document.getElementById('employee-auth-page').value=1"
+        />
+        <select
+            id="employee-auth-per-page"
+            name="per_page"
+            class="oh-input"
+            onchange="document.getElementById('employee-auth-page').value=1"
+        >
+            <option value="10" {% if not request.GET.per_page or request.GET.per_page == "10" %}selected{% endif %}>10 {% trans "per page" %}</option>
+            <option value="25" {% if request.GET.per_page == "25" %}selected{% endif %}>25 {% trans "per page" %}</option>
+            <option value="50" {% if request.GET.per_page == "50" %}selected{% endif %}>50 {% trans "per page" %}</option>
+            <option value="100" {% if request.GET.per_page == "100" %}selected{% endif %}>100 {% trans "per page" %}</option>
+        </select>
+    </form>
+
+    <div
+        id="employee-auth-table"
+        hx-get="{% url 'employee-auth-table' %}"
+        hx-trigger="load, every 60s"
+        hx-swap="innerHTML"
+        hx-include="#employee-auth-filter-form"
+    >
+        {% include "base/security/employee_auth_table.html" %}
     </div>
 </div>

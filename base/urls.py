@@ -762,6 +762,16 @@ urlpatterns = [
         views.admin_logout_employee,
         name="employee-auth-admin-logout",
     ),
+    path(
+        "settings/employee-auth/table/",
+        views.employee_auth_table,
+        name="employee-auth-table",
+    ),
+    path(
+        "settings/employee-auth/status/",
+        views.employee_auth_status,
+        name="employee-auth-status",
+    ),
     path("settings/date-settings/", views.date_settings, name="date-settings"),
     path("settings/save-date/", views.save_date_format, name="save_date_format"),
     path("settings/get-date-format/", views.get_date_format, name="get-date-format"),

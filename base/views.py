@@ -28,6 +28,7 @@ from django.contrib.sessions.models import Session
 from django.core.files.base import ContentFile
 from django.core.mail import EmailMessage, EmailMultiAlternatives
 from django.core.management import call_command
+from django.core.paginator import Paginator
 from django.db.models import ProtectedError, Q
 from django.http import (
     FileResponse,
@@ -5350,9 +5351,19 @@ def general_settings(request):
     auth_settings = EmployeeAuthSettings.objects.first()
     if not auth_settings:
         auth_settings = EmployeeAuthSettings.objects.create()
-    employees = Employee.objects.select_related("employee_user_id").filter(
-        employee_user_id__isnull=False
+    next_rotation_at = None
+    server_now = timezone.now()
+    if auth_settings.password_rotation_enabled and auth_settings.last_rotation_at:
+        next_rotation_at = auth_settings.last_rotation_at + timedelta(
+            seconds=auth_settings.rotation_interval_seconds
+        )
+    employees = (
+        Employee.objects.select_related("employee_user_id")
+        .filter(employee_user_id__isnull=False)
+        .order_by("employee_user_id__username")
     )
+    paginator = Paginator(employees, 10)
+    page_obj = paginator.get_page(1)
     rotation_states = {
         state.user_id: state
         for state in EmployeePasswordRotationState.objects.select_related("user")
@@ -5363,7 +5374,7 @@ def general_settings(request):
             "user": employee.employee_user_id,
             "state": rotation_states.get(employee.employee_user_id_id),
         }
-        for employee in employees
+        for employee in page_obj
     ]
     if request.method == "POST":
         form = AnnouncementExpireForm(request.POST, instance=instance)
@@ -5387,7 +5398,84 @@ def general_settings(request):
             "companies": companies,
             "selected_company_id": selected_company_id,
             "employee_auth_settings": auth_settings,
+            "next_rotation_at": next_rotation_at,
+            "server_now": server_now,
             "employee_password_states": employee_password_states,
+            "page_obj": page_obj,
+            "pd": urlencode({"q": "", "per_page": 10}),
+        },
+    )
+
+
+@login_required
+@permission_required("base.change_employeeauthsettings")
+def employee_auth_table(request):
+    q = (request.GET.get("q") or "").strip()
+    try:
+        per_page = int(request.GET.get("per_page") or 10)
+    except ValueError:
+        per_page = 10
+    per_page = 10 if per_page <= 0 else per_page
+    employees_qs = Employee.objects.select_related("employee_user_id").filter(
+        employee_user_id__isnull=False
+    )
+    if q:
+        employees_qs = employees_qs.filter(
+            Q(employee_user_id__username__icontains=q)
+            | Q(employee_first_name__icontains=q)
+            | Q(employee_last_name__icontains=q)
+            | Q(email__icontains=q)
+        )
+
+    employees_qs = employees_qs.order_by("employee_user_id__username")
+    paginator = Paginator(employees_qs, per_page)
+    page_number = request.GET.get("page") or 1
+    page_obj = paginator.get_page(page_number)
+
+    rotation_states = {
+        state.user_id: state
+        for state in EmployeePasswordRotationState.objects.select_related("user")
+    }
+    employee_password_states = [
+        {
+            "employee": employee,
+            "user": employee.employee_user_id,
+            "state": rotation_states.get(employee.employee_user_id_id),
+        }
+        for employee in page_obj
+    ]
+
+    pd = urlencode({"q": q, "per_page": per_page})
+    return render(
+        request,
+        "base/security/employee_auth_table.html",
+        {
+            "employee_password_states": employee_password_states,
+            "page_obj": page_obj,
+            "pd": pd,
+        },
+    )
+
+
+@login_required
+@permission_required("base.change_employeeauthsettings")
+def employee_auth_status(request):
+    auth_settings = EmployeeAuthSettings.objects.first()
+    if not auth_settings:
+        auth_settings = EmployeeAuthSettings.objects.create()
+    next_rotation_at = None
+    server_now = timezone.now()
+    if auth_settings.password_rotation_enabled and auth_settings.last_rotation_at:
+        next_rotation_at = auth_settings.last_rotation_at + timedelta(
+            seconds=auth_settings.rotation_interval_seconds
+        )
+    return render(
+        request,
+        "base/security/employee_auth_status.html",
+        {
+            "employee_auth_settings": auth_settings,
+            "next_rotation_at": next_rotation_at,
+            "server_now": server_now,
         },
     )
 

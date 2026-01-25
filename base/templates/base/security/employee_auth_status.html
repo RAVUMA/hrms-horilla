@@ -1,0 +1,17 @@
+{% load i18n %}
+
+<div
+    id="rotation-status"
+    data-interval-seconds="{{ employee_auth_settings.rotation_interval_seconds }}"
+    data-next-rotation="{% if next_rotation_at %}{{ next_rotation_at|date:'c' }}{% endif %}"
+    data-server-now="{{ server_now|date:'c' }}"
+>
+    {% if employee_auth_settings.password_rotation_enabled %}
+        {% trans "Next update in" %}: <span id="rotation-countdown">--:--</span>
+        {% if employee_auth_settings.last_rotation_at %}
+            | {% trans "Last Rotation" %}: {{ employee_auth_settings.last_rotation_at }}
+        {% endif %}
+    {% else %}
+        <span class="oh-badge oh-badge--danger">{% trans "Stopped" %}</span>
+    {% endif %}
+</div>
