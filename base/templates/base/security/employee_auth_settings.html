@@ -1,0 +1,175 @@
+{% load i18n %}
+
+<div class="oh-inner-sidebar-content mb-4">
+    <div class="oh-inner-sidebar-content__header d-flex justify-content-between align-items-center">
+        <h2 class="oh-inner-sidebar-content__title">
+            {% trans "Employee Attendance Authentication" %}
+        </h2>
+    </div>
+
+    <div class="oh-label__info">
+        <label class="oh-label fw-bold">{% trans "Password Rotation" %}</label>
+        <div class="text-muted">
+            {% trans "Automatically rotate employee passwords at a fixed interval." %}
+        </div>
+    </div>
+
+    <div class="d-flex flex-wrap gap-2 mt-2">
+        <form action="{% url 'employee-auth-rotation-start' %}" method="post">
+            {% csrf_token %}
+            <button type="submit" class="oh-btn oh-btn--secondary oh-btn--shadow">
+                {% trans "Password Gen Start" %}
+            </button>
+        </form>
+        <form action="{% url 'employee-auth-rotation-stop' %}" method="post">
+            {% csrf_token %}
+            <button type="submit" class="oh-btn oh-btn--danger-outline oh-btn--light-bkg">
+                {% trans "Password Gen Stop" %}
+            </button>
+        </form>
+        <div
+            class="ms-2 text-muted"
+            id="rotation-status"
+            data-interval-seconds="{{ employee_auth_settings.rotation_interval_seconds }}"
+            data-last-rotation="{% if employee_auth_settings.last_rotation_at %}{{ employee_auth_settings.last_rotation_at|date:'c' }}{% endif %}"
+        >
+            {% if employee_auth_settings.password_rotation_enabled %}
+                {% trans "Next update in" %}: <span id="rotation-countdown">--:--</span>
+                {% if employee_auth_settings.last_rotation_at %}
+                    | {% trans "Last Rotation" %}: {{ employee_auth_settings.last_rotation_at }}
+                {% endif %}
+            {% else %}
+                <span class="oh-badge oh-badge--danger">{% trans "Stopped" %}</span>
+            {% endif %}
+        </div>
+    </div>
+    <script>
+        (function () {
+            const statusEl = document.getElementById("rotation-status");
+            const countdownEl = document.getElementById("rotation-countdown");
+            if (!statusEl || !countdownEl) return;
+
+            const intervalSeconds = parseInt(statusEl.dataset.intervalSeconds || "0", 10);
+            const lastRotationRaw = statusEl.dataset.lastRotation || "";
+            if (!intervalSeconds || !lastRotationRaw) {
+                countdownEl.textContent = "--:--";
+                return;
+            }
+
+            let lastRotation = new Date(lastRotationRaw);
+            if (Number.isNaN(lastRotation.getTime())) {
+                countdownEl.textContent = "--:--";
+                return;
+            }
+
+            function tick() {
+                const nextAt = new Date(lastRotation.getTime() + intervalSeconds * 1000);
+                const remainingMs = Math.max(0, nextAt.getTime() - Date.now());
+                const remainingSec = Math.ceil(remainingMs / 1000);
+                if (remainingSec <= 0) {
+                    lastRotation = new Date(nextAt.getTime());
+                }
+                const min = String(Math.floor(remainingSec / 60)).padStart(2, "0");
+                const sec = String(remainingSec % 60).padStart(2, "0");
+                countdownEl.textContent = `${min}:${sec}`;
+            }
+
+            tick();
+            setInterval(tick, 1000);
+        })();
+    </script>
+
+    <hr class="my-3" />
+
+    <div class="oh-label__info">
+        <label class="oh-label fw-bold">{% trans "Emergency Password Mode" %}</label>
+        <div class="text-muted">
+            {% trans "Temporarily allow all employees to log in with a shared emergency password." %}
+        </div>
+    </div>
+
+    <form action="{% url 'employee-auth-emergency-enable' %}" method="post" class="mt-2">
+        {% csrf_token %}
+        <div class="oh-input-group w-100">
+            <input type="password" name="emergency_password" class="oh-input w-100" placeholder="{% trans 'Emergency password' %}" />
+            <button type="submit" class="oh-btn oh-btn--secondary">
+                {% trans "Enable Emergency Mode" %}
+            </button>
+        </div>
+    </form>
+
+    <form action="{% url 'employee-auth-emergency-disable' %}" method="post" class="mt-2">
+        {% csrf_token %}
+        <button type="submit" class="oh-btn oh-btn--danger-outline oh-btn--light-bkg">
+            {% trans "Disable Emergency Mode" %}
+        </button>
+        <span class="ms-2 text-muted">
+            {% trans "Status" %}: {% if employee_auth_settings.emergency_mode_enabled %}{% trans "Enabled" %}{% else %}{% trans "Disabled" %}{% endif %}
+        </span>
+    </form>
+
+    <hr class="my-3" />
+
+    <div class="oh-inner-sidebar-content__header d-flex justify-content-between align-items-center">
+        <h3 class="oh-inner-sidebar-content__title">
+            {% trans "Employee Passwords (Current)" %}
+        </h3>
+    </div>
+
+    <div class="oh-sticky-table">
+        <div class="oh-sticky-table__table">
+            <div class="oh-sticky-table__thead">
+                <div class="oh-sticky-table__tr">
+                    <div class="oh-sticky-table__th">{% trans "Username" %}</div>
+                    <div class="oh-sticky-table__th">{% trans "Employee" %}</div>
+                    <div class="oh-sticky-table__th">{% trans "Password" %}</div>
+                    <div class="oh-sticky-table__th">{% trans "Version" %}</div>
+                    <div class="oh-sticky-table__th">{% trans "Last Rotated" %}</div>
+                    <div class="oh-sticky-table__th">{% trans "Actions" %}</div>
+                </div>
+            </div>
+            <div class="oh-sticky-table__tbody">
+                {% for row in employee_password_states %}
+                    <div class="oh-sticky-table__tr">
+                        <div class="oh-sticky-table__td">{{ row.user.username }}</div>
+                        <div class="oh-sticky-table__td">
+                            {{ row.employee.employee_first_name }} {{ row.employee.employee_last_name }}
+                        </div>
+                        <div class="oh-sticky-table__td">
+                            {% if row.state %}
+                                {{ row.state.get_current_password }}
+                            {% else %}
+                                {% trans "Not generated" %}
+                            {% endif %}
+                        </div>
+                        <div class="oh-sticky-table__td">
+                            {% if row.state %}{{ row.state.password_version }}{% else %}-{% endif %}
+                        </div>
+                        <div class="oh-sticky-table__td">
+                            {% if row.state and row.state.last_rotated_at %}
+                                {{ row.state.last_rotated_at }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </div>
+                        <div class="oh-sticky-table__td">
+                            <form action="{% url 'employee-auth-admin-logout' %}" method="post">
+                                {% csrf_token %}
+                                <input type="hidden" name="user_id" value="{{ row.user.id }}" />
+                                <button type="submit" class="oh-btn oh-btn--danger-outline oh-btn--light-bkg">
+                                    {% trans "Force Logout" %}
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                {% empty %}
+                    <div class="oh-sticky-table__tr">
+                        <div class="oh-sticky-table__td" colspan="6">
+                            {% trans "No employees found." %}
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>

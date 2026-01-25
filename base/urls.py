@@ -737,6 +737,31 @@ urlpatterns = [
         name="delete-notifications",
     ),
     path("settings/general-settings/", views.general_settings, name="general-settings"),
+    path(
+        "settings/employee-auth/rotation/start/",
+        views.start_employee_password_rotation,
+        name="employee-auth-rotation-start",
+    ),
+    path(
+        "settings/employee-auth/rotation/stop/",
+        views.stop_employee_password_rotation,
+        name="employee-auth-rotation-stop",
+    ),
+    path(
+        "settings/employee-auth/emergency/enable/",
+        views.enable_emergency_password_mode,
+        name="employee-auth-emergency-enable",
+    ),
+    path(
+        "settings/employee-auth/emergency/disable/",
+        views.disable_emergency_password_mode,
+        name="employee-auth-emergency-disable",
+    ),
+    path(
+        "settings/employee-auth/admin-logout/",
+        views.admin_logout_employee,
+        name="employee-auth-admin-logout",
+    ),
     path("settings/date-settings/", views.date_settings, name="date-settings"),
     path("settings/save-date/", views.save_date_format, name="save_date_format"),
     path("settings/get-date-format/", views.get_date_format, name="get-date-format"),

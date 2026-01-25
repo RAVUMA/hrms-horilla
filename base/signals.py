@@ -239,4 +239,7 @@ class Fail2BanMiddleware:
         return self.get_response(request)
 
 
-settings.MIDDLEWARE.append("base.signals.Fail2BanMiddleware")
+if "base.signals.Fail2BanMiddleware" not in settings.MIDDLEWARE:
+    settings.MIDDLEWARE.append("base.signals.Fail2BanMiddleware")
+if "base.middleware.SingleSessionEnforcementMiddleware" not in settings.MIDDLEWARE:
+    settings.MIDDLEWARE.append("base.middleware.SingleSessionEnforcementMiddleware")

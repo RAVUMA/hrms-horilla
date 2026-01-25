@@ -44,5 +44,8 @@
     {% include "payroll/settings/payroll_settings.html" %}
 {% endif %}
 
+{% if perms.base.change_employeeauthsettings %}
+    {% include "base/security/employee_auth_settings.html" %}
+{% endif %}
 
 {% endblock settings %}
