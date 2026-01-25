@@ -70,36 +70,59 @@ class AttendanceActivity(HorillaModel):
     clock_out_date = models.DateField(null=True, verbose_name=_("Out Date"))
     out_datetime = models.DateTimeField(null=True)
     clock_out = models.TimeField(null=True, verbose_name=_("Check Out"))
+    
+    # GPS Location Fields - ADD THESE LINES
+    check_in_latitude = models.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        null=True,
+        blank=True,
+        verbose_name=_("Check-in Latitude"),
+        help_text=_("GPS latitude coordinate for check-in")
+    )
+    check_in_longitude = models.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        null=True,
+        blank=True,
+        verbose_name=_("Check-in Longitude"),
+        help_text=_("GPS longitude coordinate for check-in")
+    )
+    check_out_latitude = models.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        null=True,
+        blank=True,
+        verbose_name=_("Check-out Latitude"),
+        help_text=_("GPS latitude coordinate for check-out")
+    )
+    check_out_longitude = models.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        null=True,
+        blank=True,
+        verbose_name=_("Check-out Longitude"),
+        help_text=_("GPS longitude coordinate for check-out")
+    )
+    location_accuracy = models.FloatField(
+        null=True,
+        blank=True,
+        verbose_name=_("Location Accuracy"),
+        help_text=_("GPS accuracy in meters")
+    )
+    check_in_address = models.CharField(
+        max_length=500,
+        null=True,
+        blank=True,
+        verbose_name=_("Check-in Address"),
+        help_text=_("Reverse geocoded address for check-in location")
+    )
+    check_out_address = models.CharField(max_length=500, null=True, blank=True)
+    # END OF GPS FIELDS
+    
     objects = HorillaCompanyManager(
         related_company_field="employee_id__employee_work_info__company_id"
     )
-
-    class Meta:
-        """
-        Meta class to add some additional options
-        """
-
-        ordering = ["-attendance_date", "employee_id__employee_first_name", "clock_in"]
-
-    def duration(self):
-        """
-        Duration calc b/w in-out method
-        """
-
-        if not self.clock_out or not self.clock_out_date:
-            self.clock_out_date = datetime.today().date()
-            self.clock_out = datetime.now().time()
-
-        clock_in_datetime = datetime.combine(self.clock_in_date, self.clock_in)
-        clock_out_datetime = datetime.combine(self.clock_out_date, self.clock_out)
-
-        time_difference = clock_out_datetime - clock_in_datetime
-
-        return time_difference.total_seconds()
-
-    def __str__(self):
-        return f"{self.employee_id} - {self.attendance_date} - {self.clock_in} - {self.clock_out}"
-
 
 class BatchAttendance(HorillaModel):
     """

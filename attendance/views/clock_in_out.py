@@ -15,6 +15,9 @@ from django.db.models import Q
 from django.http import HttpResponse
 from django.utils.translation import gettext_lazy as _
 
+from geopy.geocoders import Nominatim
+from geopy.exc import GeocoderTimedOut, GeocoderServiceError
+
 from attendance.methods.utils import (
     activity_datetime,
     employee_exists,
@@ -38,6 +41,27 @@ from base.context_processors import (
 from base.models import AttendanceAllowedIP, Company, EmployeeShiftDay
 from horilla.decorators import hx_request_required, login_required
 from horilla.horilla_middlewares import _thread_locals
+
+
+def get_address_from_coordinates(latitude, longitude):
+    """
+    Get human-readable address from GPS coordinates using reverse geocoding
+    """
+    if not latitude or not longitude:
+        return None
+    
+    try:
+        geolocator = Nominatim(user_agent="horilla_attendance_system")
+        location = geolocator.reverse(f"{latitude}, {longitude}", timeout=10)
+        if location:
+            return location.address
+        return None
+    except (GeocoderTimedOut, GeocoderServiceError) as e:
+        print(f"Geocoding error: {e}")
+        return None
+    except Exception as e:
+        print(f"Unexpected geocoding error: {e}")
+        return None
 
 
 def late_come_create(attendance):
@@ -122,6 +146,9 @@ def clock_in_attendance_and_activity(
     start_time,
     end_time,
     in_datetime,
+    latitude=None,
+    longitude=None,
+    accuracy=None,
 ):
     """
     This method is used to create attendance activity or attendance when an employee clocks-in
@@ -135,7 +162,13 @@ def clock_in_attendance_and_activity(
         minimum_hour    : minimum hour in shift schedule
         start_time      : start time in shift schedule
         end_time        : end time in shift schedule
+        latitude        : GPS latitude
+        longitude       : GPS longitude
+        accuracy        : GPS accuracy
     """
+    
+    # Debug: Print GPS data received in function
+    print(f"DEBUG FUNCTION - Latitude: {latitude}, Longitude: {longitude}, Accuracy: {accuracy}")
 
     # attendance activity create
     activity = AttendanceActivity.objects.filter(
@@ -151,6 +184,13 @@ def clock_in_attendance_and_activity(
         activity.clock_out_date = date_today
         activity.save()
 
+    # Get address from coordinates
+    check_in_address = None
+    if latitude and longitude:
+        check_in_address = get_address_from_coordinates(latitude, longitude)
+        print(f"DEBUG ADDRESS - Address: {check_in_address}")
+
+    # Create new activity with GPS data
     new_activity = AttendanceActivity.objects.create(
         employee_id=employee,
         attendance_date=attendance_date,
@@ -158,7 +198,15 @@ def clock_in_attendance_and_activity(
         shift_day=day,
         clock_in=in_datetime,
         in_datetime=in_datetime,
+        check_in_latitude=latitude if latitude else None,
+        check_in_longitude=longitude if longitude else None,
+        location_accuracy=float(accuracy) if accuracy else None,
+        check_in_address=check_in_address,
     )
+    
+    # Debug: Print what was saved
+    print(f"DEBUG SAVED - Activity ID: {new_activity.id}, Lat: {new_activity.check_in_latitude}, Lng: {new_activity.check_in_longitude}, Address: {new_activity.check_in_address}")
+    
     # create attendance if not exist
     attendance = Attendance.objects.filter(
         employee_id=employee, attendance_date=attendance_date
@@ -280,6 +328,16 @@ def clock_in(request):
                     )
                     attendance_date = date_yesterday
                     day = day_yesterday
+            
+            # Get GPS data from request
+            latitude = request.GET.get('latitude') or request.POST.get('latitude')
+            longitude = request.GET.get('longitude') or request.POST.get('longitude')
+            accuracy = request.GET.get('accuracy') or request.POST.get('accuracy')
+            
+            # Debug: Print GPS data from request
+            print(f"DEBUG REQUEST - GET params: {dict(request.GET)}")
+            print(f"DEBUG GPS DATA - Latitude: {latitude}, Longitude: {longitude}, Accuracy: {accuracy}")
+            
             attendance = clock_in_attendance_and_activity(
                 employee=employee,
                 date_today=date_today,
@@ -291,6 +349,9 @@ def clock_in(request):
                 start_time=start_time_sec,
                 end_time=end_time_sec,
                 in_datetime=datetime_now,
+                latitude=latitude,
+                longitude=longitude,
+                accuracy=accuracy,
             )
             script = ""
             hidden_label = ""
@@ -320,9 +381,7 @@ def clock_in(request):
                 <button class="oh-btn oh-btn--warning-outline check-in mr-2"
                 {mouse_in}
                 {mouse_out}
-                    hx-get="/attendance/clock-out"
-                        hx-target='#attendance-activity-container'
-                        hx-swap='innerHTML'><ion-icon class="oh-navbar__clock-icon mr-2
+                    onclick="clockOutWithGPS()"><ion-icon class="oh-navbar__clock-icon mr-2
                         text-warning"
                             name="exit-outline"></ion-icon>
                 <span {hidden_label} class="hr-check-in-out-text">{check_out}</span>
@@ -347,14 +406,20 @@ def clock_in(request):
         return HttpResponse("<script>location.reload();</script>")
 
 
-def clock_out_attendance_and_activity(employee, date_today, now, out_datetime=None):
+def clock_out_attendance_and_activity(employee, date_today, now, out_datetime=None, latitude=None, longitude=None, accuracy=None):
     """
     Clock out the attendance and activity
     args:
         employee    : employee instance
         date_today  : today date
         now         : now
+        latitude    : GPS latitude
+        longitude   : GPS longitude
+        accuracy    : GPS accuracy
     """
+    
+    # Debug: Print GPS data received in function
+    print(f"DEBUG CLOCK-OUT FUNCTION - Latitude: {latitude}, Longitude: {longitude}, Accuracy: {accuracy}")
 
     attendance_activities = AttendanceActivity.objects.filter(
         employee_id=employee,
@@ -365,10 +430,28 @@ def clock_out_attendance_and_activity(employee, date_today, now, out_datetime=No
         attendance_activity = attendance_activities.filter(
             clock_out__isnull=True
         ).last()
+        
+        # Get address from check-out coordinates
+        check_out_address = None
+        if latitude and longitude:
+            check_out_address = get_address_from_coordinates(latitude, longitude)
+            print(f"DEBUG CHECKOUT ADDRESS - Address: {check_out_address}")
+
         attendance_activity.clock_out = out_datetime
         attendance_activity.clock_out_date = date_today
         attendance_activity.out_datetime = out_datetime
-        attendance_activity.save()
+        attendance_activity.check_out_latitude = latitude if latitude else None
+        attendance_activity.check_out_longitude = longitude if longitude else None
+        attendance_activity.check_out_address = check_out_address
+        # Also update accuracy if GPS is available
+        if accuracy:
+            attendance_activity.location_accuracy = float(accuracy)
+        attendance_activity.save()  
+
+        
+        
+        # Debug: Print what was saved
+        print(f"DEBUG CLOCK-OUT SAVED - Activity ID: {attendance_activity.id}, Lat: {attendance_activity.check_out_latitude}, Lng: {attendance_activity.check_out_longitude}, Address: {check_out_address}")
 
         attendance_activities = attendance_activities.filter(
             attendance_date=attendance_activity.attendance_date
@@ -511,10 +594,6 @@ def clock_out(request):
             .last()
         )
         if attendance is not None:
-            if not attendance.attendance_day:
-                day_name = attendance.attendance_date.strftime("%A").lower()
-                attendance.attendance_day = EmployeeShiftDay.objects.get(day=day_name)
-                attendance.save(update_fields=["attendance_day"])
             day = attendance.attendance_day
         now = datetime.now().strftime("%H:%M")
         if request.__dict__.get("time"):
@@ -522,8 +601,24 @@ def clock_out(request):
         minimum_hour, start_time_sec, end_time_sec = shift_schedule_today(
             day=day, shift=shift
         )
+        
+        # Get GPS data from request
+        latitude = request.GET.get('latitude') or request.POST.get('latitude')
+        longitude = request.GET.get('longitude') or request.POST.get('longitude')
+        accuracy = request.GET.get('accuracy') or request.POST.get('accuracy')
+        
+        # Debug: Print GPS data from request
+        print(f"DEBUG CLOCK-OUT REQUEST - GET params: {dict(request.GET)}")
+        print(f"DEBUG CLOCK-OUT GPS DATA - Latitude: {latitude}, Longitude: {longitude}, Accuracy: {accuracy}")
+        
         attendance = clock_out_attendance_and_activity(
-            employee=employee, date_today=date_today, now=now, out_datetime=datetime_now
+            employee=employee, 
+            date_today=date_today, 
+            now=now, 
+            out_datetime=datetime_now,
+            latitude=latitude,
+            longitude=longitude,
+            accuracy=accuracy,
         )
         if attendance:
             early_out_instance = attendance.late_come_early_out.filter(type="early_out")
@@ -582,9 +677,7 @@ def clock_out(request):
                 <button class="oh-btn oh-btn--success-outline mr-2"
                 {mouse_in}
                 {mouse_out}
-                hx-get="/attendance/clock-in"
-                hx-target='#attendance-activity-container'
-                hx-swap='innerHTML'>
+                onclick="clockInWithGPS()">
                 <ion-icon class="oh-navbar__clock-icon mr-2 text-success"
                 name="enter-outline"></ion-icon>
                 <span class="hr-check-in-out-text" {hidden_label} >{check_in}</span>
