@@ -104,18 +104,15 @@
     <div class="oh-label__info">
         <label class="oh-label fw-bold">{% trans "Emergency Password Mode" %}</label>
         <div class="text-muted">
-            {% trans "Temporarily allow all employees to log in with a shared emergency password." %}
+            {% trans "When enabled, employees log in using their phone number as the password." %}
         </div>
     </div>
 
     <form action="{% url 'employee-auth-emergency-enable' %}" method="post" class="mt-2">
         {% csrf_token %}
-        <div class="oh-input-group w-100">
-            <input type="password" name="emergency_password" class="oh-input w-100" placeholder="{% trans 'Emergency password' %}" />
-            <button type="submit" class="oh-btn oh-btn--secondary">
-                {% trans "Enable Emergency Mode" %}
-            </button>
-        </div>
+        <button type="submit" class="oh-btn oh-btn--secondary">
+            {% trans "Enable Emergency Mode" %}
+        </button>
     </form>
 
     <form action="{% url 'employee-auth-emergency-disable' %}" method="post" class="mt-2">

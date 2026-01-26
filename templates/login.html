@@ -62,9 +62,7 @@
                     </button>
                     {% if not initialize_database %}
                         <small class="text-center">
-                            <a href="{% url 'forgot-password' %}" class="oh-link oh-link--secondary justify-content-center">
-                                {% trans "Forgot password" %}?
-                            </a>
+                            {# Temporarily hidden by request #}
                         </small>
                     {% endif %}
                 </form>
