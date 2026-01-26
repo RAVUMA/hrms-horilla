@@ -6,6 +6,7 @@
             <div class="oh-sticky-table__tr">
                 <div class="oh-sticky-table__th">{% trans "Username" %}</div>
                 <div class="oh-sticky-table__th">{% trans "Employee" %}</div>
+                <div class="oh-sticky-table__th">{% trans "Phone" %}</div>
                 <div class="oh-sticky-table__th">{% trans "Password" %}</div>
                 <div class="oh-sticky-table__th">{% trans "Version" %}</div>
                 <div class="oh-sticky-table__th">{% trans "Last Rotated" %}</div>
@@ -19,6 +20,7 @@
                     <div class="oh-sticky-table__td">
                         {{ row.employee.employee_first_name }} {{ row.employee.employee_last_name }}
                     </div>
+                    <div class="oh-sticky-table__td">{{ row.employee.phone }}</div>
                     <div class="oh-sticky-table__td">
                         {% if row.state %}
                             {{ row.state.get_current_password }}
@@ -48,7 +50,7 @@
                 </div>
             {% empty %}
                 <div class="oh-sticky-table__tr">
-                    <div class="oh-sticky-table__td" colspan="6">
+                    <div class="oh-sticky-table__td" colspan="7">
                         {% trans "No employees found." %}
                     </div>
                 </div>

@@ -21,7 +21,6 @@ from django.apps import apps
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
-from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth.models import Group, Permission, User
 from django.contrib.auth.views import PasswordResetConfirmView, PasswordResetView
 from django.contrib.sessions.models import Session
@@ -649,21 +648,24 @@ def login_user(request):
             user_object = User.objects.filter(username=username).first()
             emergency_settings = EmployeeAuthSettings.objects.first()
             emergency_allowed = (
-                emergency_settings
-                and emergency_settings.emergency_mode_enabled
-                and emergency_settings.emergency_password_hash
+                emergency_settings and emergency_settings.emergency_mode_enabled
             )
+
             if (
                 user_object
                 and emergency_allowed
                 and user_object.is_active
                 and _is_employee_user(user_object)
-                and check_password(
-                    password, emergency_settings.emergency_password_hash
-                )
             ):
-                user = user_object
-                user.backend = "django.contrib.auth.backends.ModelBackend"
+                employee_record = Employee.objects.filter(
+                    employee_user_id=user_object
+                ).first()
+                if employee_record and password == (employee_record.phone or ""):
+                    user = user_object
+                    user.backend = "django.contrib.auth.backends.ModelBackend"
+                else:
+                    messages.error(request, _("Invalid username or password."))
+                    return redirect("login")
             else:
                 if user_object and not user_object.is_active:
                     messages.warning(
@@ -5516,16 +5518,11 @@ def stop_employee_password_rotation(request):
 @require_http_methods(["POST"])
 @permission_required("base.change_employeeauthsettings")
 def enable_emergency_password_mode(request):
-    emergency_password = request.POST.get("emergency_password", "")
-    if not emergency_password:
-        messages.error(request, _("Emergency password is required."))
-        return HttpResponseRedirect(request.META.get("HTTP_REFERER", "/"))
-
     settings_instance = EmployeeAuthSettings.objects.first()
     if not settings_instance:
         settings_instance = EmployeeAuthSettings.objects.create()
     settings_instance.emergency_mode_enabled = True
-    settings_instance.emergency_password_hash = make_password(emergency_password)
+    settings_instance.emergency_password_hash = ""
     settings_instance.emergency_password_set_at = timezone.now()
     settings_instance.save()
     messages.success(request, _("Emergency password mode enabled."))
