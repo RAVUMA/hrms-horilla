@@ -257,6 +257,8 @@ class ForcePasswordChangeMiddleware:
             return self.get_response(request)
 
         if hasattr(request, "user") and request.user.is_authenticated:
+            if hasattr(request.user, "employee_get"):
+                return self.get_response(request)
             if getattr(request.user, "is_new_employee", True):
                 return redirect("change-password")
 
