@@ -46,21 +46,20 @@ from horilla.horilla_middlewares import _thread_locals
 def get_address_from_coordinates(latitude, longitude):
     """
     Get human-readable address from GPS coordinates using reverse geocoding
+    Returns address or None if fails (coordinates will be shown instead)
     """
     if not latitude or not longitude:
         return None
     
     try:
-        geolocator = Nominatim(user_agent="horilla_attendance_system")
-        location = geolocator.reverse(f"{latitude}, {longitude}", timeout=10)
+        geolocator = Nominatim(user_agent="horilla_attendance_system", timeout=5)
+        location = geolocator.reverse(f"{latitude}, {longitude}", timeout=5)
         if location:
             return location.address
         return None
-    except (GeocoderTimedOut, GeocoderServiceError) as e:
-        print(f"Geocoding error: {e}")
-        return None
     except Exception as e:
-        print(f"Unexpected geocoding error: {e}")
+        # If geocoding fails, return None - coordinates will be shown instead
+        print(f"Geocoding failed (will show coordinates): {e}")
         return None
 
 
@@ -167,10 +166,9 @@ def clock_in_attendance_and_activity(
         accuracy        : GPS accuracy
     """
     
-    # Debug: Print GPS data received in function
     print(f"DEBUG FUNCTION - Latitude: {latitude}, Longitude: {longitude}, Accuracy: {accuracy}")
 
-    # attendance activity create
+    # Close previous activity if exists
     activity = AttendanceActivity.objects.filter(
         employee_id=employee,
         attendance_date=attendance_date,
@@ -184,13 +182,19 @@ def clock_in_attendance_and_activity(
         activity.clock_out_date = date_today
         activity.save()
 
-    # Get address from coordinates
+    # Try to get address (quick timeout - 5 seconds max)
     check_in_address = None
     if latitude and longitude:
-        check_in_address = get_address_from_coordinates(latitude, longitude)
-        print(f"DEBUG ADDRESS - Address: {check_in_address}")
+        try:
+            check_in_address = get_address_from_coordinates(latitude, longitude)
+            if check_in_address:
+                print(f"DEBUG ADDRESS - Got address: {check_in_address}")
+            else:
+                print(f"DEBUG ADDRESS - No address, will show coordinates")
+        except Exception as e:
+            print(f"DEBUG ADDRESS - Failed: {e}")
 
-    # Create new activity with GPS data
+    # Create activity - save coordinates always, address if available
     new_activity = AttendanceActivity.objects.create(
         employee_id=employee,
         attendance_date=attendance_date,
@@ -204,7 +208,6 @@ def clock_in_attendance_and_activity(
         check_in_address=check_in_address,
     )
     
-    # Debug: Print what was saved
     print(f"DEBUG SAVED - Activity ID: {new_activity.id}, Lat: {new_activity.check_in_latitude}, Lng: {new_activity.check_in_longitude}, Address: {new_activity.check_in_address}")
     
     # create attendance if not exist
@@ -418,40 +421,42 @@ def clock_out_attendance_and_activity(employee, date_today, now, out_datetime=No
         accuracy    : GPS accuracy
     """
     
-    # Debug: Print GPS data received in function
     print(f"DEBUG CLOCK-OUT FUNCTION - Latitude: {latitude}, Longitude: {longitude}, Accuracy: {accuracy}")
 
     attendance_activities = AttendanceActivity.objects.filter(
         employee_id=employee,
     ).order_by("attendance_date", "id")
-    attendance_activity = None  # Initialize attendance_activity
+    attendance_activity = None
 
     if attendance_activities.filter(clock_out__isnull=True).exists():
         attendance_activity = attendance_activities.filter(
             clock_out__isnull=True
         ).last()
         
-        # Get address from check-out coordinates
+        # Try to get address (quick timeout - 5 seconds max)
         check_out_address = None
         if latitude and longitude:
-            check_out_address = get_address_from_coordinates(latitude, longitude)
-            print(f"DEBUG CHECKOUT ADDRESS - Address: {check_out_address}")
-
+            try:
+                check_out_address = get_address_from_coordinates(latitude, longitude)
+                if check_out_address:
+                    print(f"DEBUG CHECKOUT ADDRESS - Got address: {check_out_address}")
+                else:
+                    print(f"DEBUG CHECKOUT ADDRESS - No address, will show coordinates")
+            except Exception as e:
+                print(f"DEBUG CHECKOUT ADDRESS - Failed: {e}")
+        
+        # Save clock-out data - coordinates always, address if available
         attendance_activity.clock_out = out_datetime
         attendance_activity.clock_out_date = date_today
         attendance_activity.out_datetime = out_datetime
         attendance_activity.check_out_latitude = latitude if latitude else None
         attendance_activity.check_out_longitude = longitude if longitude else None
         attendance_activity.check_out_address = check_out_address
-        # Also update accuracy if GPS is available
         if accuracy:
             attendance_activity.location_accuracy = float(accuracy)
-        attendance_activity.save()  
-
+        attendance_activity.save()
         
-        
-        # Debug: Print what was saved
-        print(f"DEBUG CLOCK-OUT SAVED - Activity ID: {attendance_activity.id}, Lat: {attendance_activity.check_out_latitude}, Lng: {attendance_activity.check_out_longitude}, Address: {check_out_address}")
+        print(f"DEBUG CLOCK-OUT SAVED - Activity ID: {attendance_activity.id}, Lat: {attendance_activity.check_out_latitude}, Lng: {attendance_activity.check_out_longitude}, Address: {attendance_activity.check_out_address}")
 
         attendance_activities = attendance_activities.filter(
             attendance_date=attendance_activity.attendance_date
