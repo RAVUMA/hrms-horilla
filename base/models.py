@@ -1705,7 +1705,7 @@ class EmployeeAuthSettings(models.Model):
     """
 
     password_rotation_enabled = models.BooleanField(default=False)
-    rotation_interval_seconds = models.PositiveIntegerField(default=60)
+    rotation_interval_seconds = models.PositiveIntegerField(default=300)
     rotation_started_at = models.DateTimeField(null=True, blank=True)
     last_rotation_at = models.DateTimeField(null=True, blank=True)
     emergency_mode_enabled = models.BooleanField(default=False)
