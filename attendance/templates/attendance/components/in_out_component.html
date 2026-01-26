@@ -3,58 +3,166 @@
     {% with get_forecasted_at_work=request.user.employee_get.get_forecasted_at_work %}
         {% if request.session.selected_company == "all" or request.user.employee_get.employee_work_info.company_id.id == request.session.selected_company|default:"-1"|add:"0" %}
             {% if request|is_check_in_enabled %}
+                <!-- Full-page overlay for location permission denial -->
+                <div id="location-permission-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.95); z-index: 9999999; justify-content: center; align-items: center;">
+                    <div style="background: white; padding: 40px; border-radius: 10px; text-align: center; max-width: 500px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
+                        <ion-icon name="location-outline" style="font-size: 64px; color: #dc3545; margin-bottom: 20px;"></ion-icon>
+                        <h2 style="color: #333; margin-bottom: 15px;">{% trans "Location Permission Required" %}</h2>
+                        <p style="color: #666; margin-bottom: 25px; line-height: 1.6;">
+                            {% trans "This application requires location access to function. Please enable location permissions in your browser settings and reload the page." %}
+                        </p>
+                        <button onclick="location.reload()" style="background: #28a745; color: white; border: none; padding: 12px 30px; border-radius: 5px; font-size: 16px; cursor: pointer; font-weight: 600;">
+                            {% trans "Reload Page" %}
+                        </button>
+                        <p style="color: #999; margin-top: 20px; font-size: 14px;">
+                            {% trans "After enabling location permissions, click the reload button above." %}
+                        </p>
+                    </div>
+                </div>
+
                 <script>
-                function getGPSLocation(callback) {
-                    if (navigator.geolocation) {
-                        navigator.geolocation.getCurrentPosition(
-                            function(position) {
-                                callback(null, {
-                                    latitude: position.coords.latitude,
-                                    longitude: position.coords.longitude,
-                                    accuracy: position.coords.accuracy
-                                });
-                            },
-                            function(error) {
-                                console.log('GPS Error:', error.message);
-                                // Proceed without GPS - don't block check-in
-                                callback(null, null);
-                            },
-                            {
-                                enableHighAccuracy: false,  // Changed to false for faster response
-                                timeout: 10000,
-                                maximumAge: 60000  // Accept cached location up to 1 minute old
-                            }
-                        );
-                    } else {
-                        callback(null, null);
+                function blockWebsiteAccess() {
+                    console.log('🔒 BLOCKING WEBSITE ACCESS - LOCATION PERMISSION DENIED');
+                    
+                    // Show the overlay
+                    var overlay = document.getElementById('location-permission-overlay');
+                    if (overlay) {
+                        overlay.style.display = 'flex';
                     }
+                    
+                    // Disable all interactions on the entire page
+                    document.body.style.pointerEvents = 'none';
+                    document.body.style.overflow = 'hidden';
+                    
+                    // Re-enable pointer events only for the overlay
+                    if (overlay) {
+                        overlay.style.pointerEvents = 'auto';
+                    }
+                    
+                    // Hide sidebar and navbar (optional visual enhancement)
+                    var sidebar = document.getElementById('sidebar');
+                    var navbar = document.querySelector('.oh-navbar');
+                    if (sidebar) sidebar.style.display = 'none';
+                    if (navbar) navbar.style.display = 'none';
+                }
+
+                function getGPSLocation(callback) {
+                    if (!navigator.geolocation) {
+                        console.log('❌ Geolocation not supported by this browser');
+                        callback(null, null);
+                        return;
+                    }
+                    
+                    console.log('📍 Requesting GPS location...');
+                    
+                    navigator.geolocation.getCurrentPosition(
+                        function(position) {
+                            console.log('✅ Location permission GRANTED');
+                            callback(null, {
+                                latitude: position.coords.latitude,
+                                longitude: position.coords.longitude,
+                                accuracy: position.coords.accuracy
+                            });
+                        },
+                        function(error) {
+                            console.log('GPS Error Code:', error.code);
+                            console.log('GPS Error Message:', error.message);
+                            
+                            if (error.code === 1) { // PERMISSION_DENIED
+                                console.log('❌ Location permission DENIED by user');
+                                console.log('🔒 Blocking website access NOW...');
+                                blockWebsiteAccess();
+                                callback('PERMISSION_DENIED', null);
+                                return;
+                            } else if (error.code === 2) { // POSITION_UNAVAILABLE
+                                console.log('⚠️ Location unavailable - trying again with lower accuracy');
+                                // Retry with lower accuracy requirements
+                                navigator.geolocation.getCurrentPosition(
+                                    function(position) {
+                                        console.log('✅ Location obtained on retry');
+                                        callback(null, {
+                                            latitude: position.coords.latitude,
+                                            longitude: position.coords.longitude,
+                                            accuracy: position.coords.accuracy
+                                        });
+                                    },
+                                    function(retryError) {
+                                        if (retryError.code === 1) { // PERMISSION_DENIED on retry
+                                            console.log('❌ Location permission DENIED on retry');
+                                            console.log('🔒 Blocking website access NOW...');
+                                            blockWebsiteAccess();
+                                            callback('PERMISSION_DENIED', null);
+                                        } else {
+                                            console.log('⚠️ GPS retry failed, proceeding without location');
+                                            callback(null, null);
+                                        }
+                                    },
+                                    {
+                                        enableHighAccuracy: false,
+                                        timeout: 15000,
+                                        maximumAge: 300000  // Accept 5 min old cache
+                                    }
+                                );
+                                return;
+                            } else if (error.code === 3) { // TIMEOUT
+                                console.log('⏱️ Location timeout');
+                            }
+                            
+                            // Proceed without GPS for other errors
+                            console.log('⚠️ Proceeding without GPS location');
+                            callback(null, null);
+                        },
+                        {
+                            enableHighAccuracy: false,
+                            timeout: 10000,
+                            maximumAge: 60000
+                        }
+                    );
                 }
 
                 function clockInWithGPS() {
+                    console.log('🕒 Clock-in button clicked');
                     getGPSLocation(function(error, location) {
+                        if (error === 'PERMISSION_DENIED') {
+                            console.log('🚫 Clock-in cancelled - website is blocked');
+                            return;
+                        }
+                        
                         var url = '/attendance/clock-in';
                         if (location) {
                             url += '?latitude=' + location.latitude + '&longitude=' + location.longitude + '&accuracy=' + location.accuracy;
-                            console.log('Check-in with GPS:', location);
+                            console.log('✅ Check-in with GPS:', location);
                         } else {
-                            console.log('Check-in without GPS');
+                            console.log('⚠️ Check-in without GPS - location not available');
                         }
                         htmx.ajax('GET', url, {target: '#attendance-activity-container', swap: 'innerHTML'});
                     });
                 }
 
                 function clockOutWithGPS() {
+                    console.log('🕒 Clock-out button clicked');
                     getGPSLocation(function(error, location) {
+                        if (error === 'PERMISSION_DENIED') {
+                            console.log('🚫 Clock-out cancelled - website is blocked');
+                            return;
+                        }
+                        
                         var url = '/attendance/clock-out';
                         if (location) {
                             url += '?latitude=' + location.latitude + '&longitude=' + location.longitude + '&accuracy=' + location.accuracy;
-                            console.log('Check-out with GPS:', location);
+                            console.log('✅ Check-out with GPS:', location);
                         } else {
-                            console.log('Check-out without GPS');
+                            console.log('⚠️ Check-out without GPS - location not available');
                         }
                         htmx.ajax('GET', url, {target: '#attendance-activity-container', swap: 'innerHTML'});
                     });
                 }
+
+                // Expose functions globally for button onclick handlers
+                window.clockInWithGPS = clockInWithGPS;
+                window.clockOutWithGPS = clockOutWithGPS;
+                window.handleClockIn = clockInWithGPS;
+                window.handleClockOut = clockOutWithGPS;
                 </script>
                 {% if request.user|is_clocked_in and get_forecasted_at_work.has_attendance %}
                     <button class="oh-btn oh-btn--warning-outline mr-2" {% if enabled_timerunner and get_forecasted_at_work.has_attendance %} onmouseenter="$(this).find('span').show();$(this).find('.time-runner').hide();" onmouseleave="$(this).find('span').hide();$(this).find('.time-runner').show();" {% endif %} onclick="clockOutWithGPS()"><ion-icon class="oh-navbar__clock-icon mr-2 text-warning" name="exit-outline"></ion-icon>
