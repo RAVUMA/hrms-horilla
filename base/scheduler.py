@@ -545,7 +545,7 @@ if not any(
         scheduler.add_job(
             rotate_employee_passwords,
             "interval",
-            minutes=1,
+            minutes=5,
             id="employee_password_rotation",
         )
     except:
