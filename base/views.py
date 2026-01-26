@@ -843,6 +843,11 @@ def change_password(request):
                       successfully, the page reloads with a success message.
     """
     user = request.user
+    if _is_employee_user(user):
+        messages.warning(
+            request, _("Password change is temporarily disabled for employees.")
+        )
+        return redirect("/")
     form = ChangePasswordForm(user=user)
     if request.method == "POST":
         form = ChangePasswordForm(user, request.POST)
