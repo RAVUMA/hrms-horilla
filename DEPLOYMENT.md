@@ -375,13 +375,13 @@ pm2 logs hjholdings-production
 
 ## Database Management
 
-### Connect to Staging DB
+### Connect to Staging DB (on server)
 
 ```bash
 psql -h localhost -p 5433 -U hrms_staging -d hrms_staging -W
 ```
 
-### Connect to Production DB
+### Connect to Production DB (on server)
 
 ```bash
 psql -h localhost -p 5433 -U hrms_prod -d hrms_prod -W
@@ -398,6 +398,99 @@ pg_dump -h localhost -p 5433 -U hrms_staging hrms_staging > /var/www/hjholdings/
 ```bash
 psql -h localhost -p 5433 -U hrms_staging -d hrms_staging < staging_backup_YYYYMMDD.sql
 ```
+
+---
+
+## Remote Database Access for Developers
+
+Developers can connect to the staging database from their local machine using an **SSH tunnel**. The database port is never exposed to the internet — traffic is routed securely through SSH.
+
+### How It Works
+
+```
+Developer Machine → SSH Tunnel → Server → PostgreSQL (port 5433)
+(local port 5434)                          (internal only)
+```
+
+We use local port `5434` to avoid conflicts if the developer already has a local PostgreSQL running on `5433`.
+
+### Step 1 — Set Up SSH Key Access (One-Time per Developer)
+
+The developer runs this on their **local machine** (Mac, Linux, or Windows Terminal/PowerShell):
+
+```bash
+# Check if a key already exists
+cat ~/.ssh/id_ed25519.pub
+
+# If not, generate one
+ssh-keygen -t ed25519 -C "your-name"
+# Press Enter to accept all defaults
+
+# Show the public key — send this to the server admin
+cat ~/.ssh/id_ed25519.pub
+```
+
+The output looks like:
+```
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... your-name
+```
+
+**Developer sends this public key to you (server admin).**
+
+### Step 2 — Add Developer's Key to the Server (Admin does this)
+
+```bash
+nano ~/.ssh/authorized_keys
+# Paste the developer's public key on a new line, save
+```
+
+Or as a one-liner:
+```bash
+echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... dev-name" >> ~/.ssh/authorized_keys
+```
+
+Repeat for each developer. To revoke access later, delete their line from `~/.ssh/authorized_keys`.
+
+### Step 3 — Open the SSH Tunnel (Developer runs this)
+
+**Mac / Linux / Windows Terminal / PowerShell — same command:**
+
+```bash
+ssh -L 5434:localhost:5433 administrator@108.181.195.218 -N
+```
+
+Keep this terminal open while working. The tunnel is active as long as this command runs.
+
+To run it in the background:
+```bash
+ssh -L 5434:localhost:5433 administrator@108.181.195.218 -N -f
+```
+
+### Step 4 — Connect via DB Client or Local Django
+
+**In DBeaver / TablePlus / pgAdmin:**
+```
+Host:     localhost
+Port:     5434
+Database: hrms_staging
+User:     hrms_staging
+Password: <staging db password>
+```
+
+**In local Django `.env`:**
+```env
+DB_NAME=hrms_staging
+DB_USER=hrms_staging
+DB_PASSWORD=<staging db password>
+DB_HOST=localhost
+DB_PORT=5434
+```
+
+### Important Notes
+
+- **Never run `migrate` locally against the staging DB without coordinating with the team** — it will affect the shared staging database.
+- The tunnel only works while the SSH command is running. If the connection drops, restart the tunnel command.
+- If port `5434` is also in use locally, use any free port (e.g., `5435`): `ssh -L 5435:localhost:5433 ...` and update the client port accordingly.
 
 ---
 
