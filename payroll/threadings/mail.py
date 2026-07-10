@@ -46,6 +46,16 @@ class MailSendThread(Thread):
             attachments = []
             for instance in record["instances"]:
                 response = payslip_pdf(self.request, instance.id)
+                if response.status_code != 200 or not response.content.startswith(
+                    b"%PDF"
+                ):
+                    logger.error(
+                        "Payslip PDF generation failed for payslip id %s, "
+                        "skipping attachment instead of sending a corrupted file: %s",
+                        instance.id,
+                        response.content[:300],
+                    )
+                    continue
                 attachments.append(
                     (
                         f"{instance.get_payslip_title()}.pdf",
