@@ -883,17 +883,9 @@ class CheckingStatus(APIView):
         status = False
         clock_in_time = None
 
-        today = datetime.now()
-        attendance_activity_first = (
-            AttendanceActivity.objects.filter(
-                employee_id=request.user.employee_get, clock_in_date=today
-            )
-            .order_by("in_datetime")
-            .first()
-        )
         if attendance_activity:
             try:
-                clock_in_time = attendance_activity_first.clock_in.strftime("%I:%M %p")
+                clock_in_time = attendance_activity.clock_in.strftime("%I:%M %p")
                 if attendance_activity.clock_out_date:
                     status = False
                 else:
