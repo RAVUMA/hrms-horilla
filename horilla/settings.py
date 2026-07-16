@@ -136,6 +136,7 @@ else:
             "PASSWORD": env("DB_PASSWORD", default=""),
             "HOST": env("DB_HOST", default=""),
             "PORT": env("DB_PORT", default=""),
+            "CONN_MAX_AGE": 60,
         }
     }
 
