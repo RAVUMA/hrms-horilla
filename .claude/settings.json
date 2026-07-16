@@ -1,0 +1,42 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(tasklist //FI \"IMAGENAME eq plink.exe\")",
+      "PowerShell(Get-NetTCPConnection -LocalPort 5433 -ErrorAction SilentlyContinue)",
+      "PowerShell(Test-NetConnection -ComputerName localhost -Port 5433 -WarningAction SilentlyContinue)",
+      "Bash(taskkill //F //IM plink.exe)",
+      "Bash(\"/c/Program Files/PostgreSQL/17/bin/psql.exe\" -h localhost -p 5433 -U hrms_staging -d hrms_staging -c \"select 1;\")",
+      "Bash(./horillavenv/Scripts/python.exe -c \"import paramiko; print\\(paramiko.__version__\\)\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:8000/login/ --max-time 3)",
+      "Bash(./horillavenv/Scripts/python.exe manage.py check)",
+      "Bash(taskkill //F //PID 19244)",
+      "Bash(taskkill //F //PID 17428)",
+      "Bash(taskkill //F //PID 24688)",
+      "Bash(taskkill //F //PID 25836)",
+      "Bash(taskkill //F //PID 22872)",
+      "Bash(taskkill //F //PID 10972)",
+      "Bash(taskkill //F //PID 21600)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:8000/login/ --max-time 5)",
+      "Bash(\"/c/Program Files/PostgreSQL/17/bin/psql.exe\" -h localhost -p 5433 -U hrms_staging -d hrms_staging -c \"select 1;\" --no-password)",
+      "Bash(kill %1)",
+      "Bash(node --version 2>&1 *)",
+      "Read(//c/projects//**)",
+      "Bash(ls -la /c/projects/hj-mobile 2>&1)",
+      "Read(//c/projects/hj-mobile/**)",
+      "Read(//c/projects/hrms_mobile_app/lib/screens//**)",
+      "Read(//c/projects/hrms_mobile_app/releases//**)",
+      "Read(//c/projects/**)",
+      "Bash(npm create *)",
+      "Bash(npm install *)",
+      "Bash(npm run *)",
+      "Bash(curl -s http://localhost:5173/)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:5173/)",
+      "Bash(curl -s -i -X OPTIONS https://hrms.hjholdings.lk/api/auth/login/ -H 'Origin: http://localhost:5173' -H 'Access-Control-Request-Method: POST' -H 'Access-Control-Request-Headers: content-type')",
+      "Bash(curl -s -i -X OPTIONS http://localhost:8000/api/auth/login/ -H 'Origin: http://localhost:5173' -H 'Access-Control-Request-Method: POST' -H 'Access-Control-Request-Headers: content-type')",
+      "Bash(curl -s -i -X POST http://localhost:8000/api/auth/login/ -H 'Origin: http://localhost:5173' -H 'Content-Type: application/json' -d '{\"username\":\"invalid\",\"password\":\"invalid\"}')"
+    ],
+    "additionalDirectories": [
+      "C:\\projects\\hj-mobile"
+    ]
+  }
+}

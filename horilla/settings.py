@@ -32,6 +32,7 @@ env = environ.Env(
     ),
     ALLOWED_HOSTS=(list, ["*"]),
     CSRF_TRUSTED_ORIGINS=(list, ["http://localhost:8000"]),
+    CORS_ALLOWED_ORIGINS=(list, []),
 )
 
 env.read_env(os.path.join(BASE_DIR, ".env"), overwrite=True)
@@ -199,6 +200,12 @@ MESSAGE_TAGS = {
 
 
 CSRF_TRUSTED_ORIGINS = env("CSRF_TRUSTED_ORIGINS")
+
+# Origins allowed to make cross-origin API requests (e.g. a separately
+# hosted web/mobile frontend calling /api/... from its own domain). Empty
+# by default - django-cors-headers blocks all cross-origin requests unless
+# explicitly listed here.
+CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS")
 
 LOGIN_URL = "/login"
 
