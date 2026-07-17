@@ -1395,8 +1395,27 @@ class AnnouncementListAPIView(APIView):
         soup = BeautifulSoup(description or "", "html.parser")
         content = []
 
-        for tag in soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6", "p"]):
+        block_tags = ["h1", "h2", "h3", "h4", "h5", "h6", "p", "div", "li"]
+        blocks = soup.find_all(block_tags)
+
+        for tag in blocks:
+            # Skip wrapper divs that themselves contain block tags - only
+            # their children should contribute text, otherwise text gets
+            # duplicated (once for the wrapper, once for each child).
+            if tag.name == "div" and tag.find(block_tags):
+                continue
+            text = tag.get_text(" ", strip=True)
+            if not text:
+                continue
             tag_type = "heading" if tag.name.startswith("h") else "paragraph"
-            content.append({"type": tag_type, "text": tag.get_text(" ", strip=True)})
+            content.append({"type": tag_type, "text": text})
+
+        if not content:
+            # Editors (e.g. Summernote) don't always wrap content in the tags
+            # above - plain/bare text with no block tags at all falls back to
+            # the raw visible text so it isn't silently dropped.
+            text = soup.get_text(" ", strip=True)
+            if text:
+                content.append({"type": "paragraph", "text": text})
 
         return content

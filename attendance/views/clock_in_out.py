@@ -123,6 +123,8 @@ def clock_in_attendance_and_activity(
     start_time,
     end_time,
     in_datetime,
+    latitude=None,
+    longitude=None,
 ):
     """
     This method is used to create attendance activity or attendance when an employee clocks-in
@@ -174,6 +176,8 @@ def clock_in_attendance_and_activity(
         attendance.attendance_clock_in = now
         attendance.attendance_clock_in_date = date_today
         attendance.minimum_hour = minimum_hour
+        attendance.clock_in_latitude = latitude
+        attendance.clock_in_longitude = longitude
         attendance.save()
         # check here late come or not
 
@@ -185,6 +189,13 @@ def clock_in_attendance_and_activity(
         attendance = attendance[0]
         attendance.attendance_clock_out = None
         attendance.attendance_clock_out_date = None
+        attendance.clock_in_latitude = latitude
+        attendance.clock_in_longitude = longitude
+        # Clear any stale clock-out location from a previous clock-in/out
+        # cycle today - otherwise it looks like this session already has a
+        # check-out location before the employee has actually clocked out.
+        attendance.clock_out_latitude = None
+        attendance.clock_out_longitude = None
         attendance.save()
         # delete if the attendance marked the early out
         early_out_instance = attendance.late_come_early_out.filter(type="early_out")
@@ -348,7 +359,9 @@ def clock_in(request):
         return HorillaRedirect(request)
 
 
-def clock_out_attendance_and_activity(employee, date_today, now, out_datetime=None):
+def clock_out_attendance_and_activity(
+    employee, date_today, now, out_datetime=None, latitude=None, longitude=None
+):
     """
     Clock out the attendance and activity
     args:
@@ -392,6 +405,8 @@ def clock_out_attendance_and_activity(employee, date_today, now, out_datetime=No
         attendance.attendance_clock_out = now + ":00"
         attendance.attendance_clock_out_date = date_today
         attendance.attendance_worked_hour = duration
+        attendance.clock_out_latitude = latitude
+        attendance.clock_out_longitude = longitude
         # Overtime calculation
         attendance.attendance_overtime = overtime_calculation(attendance)
 
@@ -524,7 +539,12 @@ def clock_out(request):
             day=day, shift=shift
         )
         attendance = clock_out_attendance_and_activity(
-            employee=employee, date_today=date_today, now=now, out_datetime=datetime_now
+            employee=employee,
+            date_today=date_today,
+            now=now,
+            out_datetime=datetime_now,
+            latitude=request.__dict__.get("latitude"),
+            longitude=request.__dict__.get("longitude"),
         )
         if attendance:
             early_out_instance = attendance.late_come_early_out.filter(type="early_out")

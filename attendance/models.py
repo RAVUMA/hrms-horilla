@@ -166,6 +166,18 @@ class Attendance(HorillaModel):
     attendance_clock_out = models.TimeField(
         null=True, verbose_name=_("Check-Out"), help_text=_("Last Check-Out Time")
     )
+    clock_in_latitude = models.FloatField(
+        null=True, blank=True, verbose_name=_("Check-In Latitude")
+    )
+    clock_in_longitude = models.FloatField(
+        null=True, blank=True, verbose_name=_("Check-In Longitude")
+    )
+    clock_out_latitude = models.FloatField(
+        null=True, blank=True, verbose_name=_("Check-Out Latitude")
+    )
+    clock_out_longitude = models.FloatField(
+        null=True, blank=True, verbose_name=_("Check-Out Longitude")
+    )
     attendance_worked_hour = models.CharField(
         null=True,
         default="00:00",
