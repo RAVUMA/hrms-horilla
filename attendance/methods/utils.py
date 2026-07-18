@@ -512,6 +512,8 @@ class Request:
         date,
         time,
         datetime,
+        latitude=None,
+        longitude=None,
     ) -> None:
         self.user = user
         self.path = "/"
@@ -519,6 +521,8 @@ class Request:
         self.date = date
         self.time = time
         self.datetime = datetime
+        self.latitude = latitude
+        self.longitude = longitude
         self.META = META()
 
 

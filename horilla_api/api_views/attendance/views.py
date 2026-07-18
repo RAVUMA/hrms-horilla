@@ -127,6 +127,8 @@ class ClockInAPIView(APIView):
                     start_time=start_time_sec,
                     end_time=end_time_sec,
                     in_datetime=datetime_now,
+                    latitude=request.data.get("latitude"),
+                    longitude=request.data.get("longitude"),
                 )
                 return Response({"message": "Clocked-In"}, status=200)
             return Response(
@@ -171,6 +173,8 @@ class ClockOutAPIView(APIView):
                         date=current_date,
                         time=current_time,
                         datetime=current_datetime,
+                        latitude=request.data.get("latitude"),
+                        longitude=request.data.get("longitude"),
                     )
                 )
                 return Response({"message": "Clocked-Out"}, status=200)
