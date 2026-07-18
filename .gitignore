@@ -130,10 +130,13 @@ dmypy.json
 
 *.pyc
 
-# migration files
-**/migrations/**
-!**/migrations
-!**/migrations/__init__.py
+# migration files — commented out because migration files must be tracked in git
+# for proper deployment across staging/production environments.
+# Without tracking, 'python3 manage.py migrate' fails on the server as migration
+# files are missing, causing 500 errors.
+# **/migrations/**
+# !**/migrations
+# !**/migrations/__init__.py
 
 # media file
 media/
